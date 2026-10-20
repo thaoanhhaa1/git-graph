@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="favBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#111827" />
+      <stop offset="100%" stop-color="#030712" />
+    </linearGradient>
+    <linearGradient id="favCyan" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06b6d4" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+    <linearGradient id="favGreen" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="100%" stop-color="#34d399" />
+    </linearGradient>
+    <linearGradient id="favCoral" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#e11d48" />
+      <stop offset="100%" stop-color="#fb7185" />
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="14" fill="url(#favBg)" stroke="#38bdf8" stroke-width="1.5" stroke-opacity="0.4" />
+
+  <!-- Branches -->
+  <path d="M 18 46 C 18 34, 24 24, 30 24 C 36 24, 38 18, 48 18" fill="none" stroke="url(#favGreen)" stroke-width="2.5" stroke-linecap="round" />
+  <path d="M 28 37 C 36 37, 42 40, 42 34 C 42 24, 46 22, 48 18" fill="none" stroke="url(#favCoral)" stroke-width="2.5" stroke-linecap="round" />
+  <line x1="18" y1="46" x2="48" y2="18" stroke="url(#favCyan)" stroke-width="3.5" stroke-linecap="round" />
+
+  <!-- Nodes -->
+  <circle cx="18" cy="46" r="3.5" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5" />
+  <circle cx="18" cy="46" r="1.5" fill="#ffffff" />
+  <circle cx="28" cy="37" r="3" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5" />
+  <circle cx="28" cy="37" r="1.2" fill="#ffffff" />
+  <circle cx="29" cy="26" r="3" fill="#0f172a" stroke="#34d399" stroke-width="1.5" />
+  <circle cx="29" cy="26" r="1.2" fill="#ffffff" />
+  <circle cx="42" cy="34" r="3" fill="#0f172a" stroke="#fb7185" stroke-width="1.5" />
+  <circle cx="42" cy="34" r="1.2" fill="#ffffff" />
+  <circle cx="48" cy="18" r="4.5" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5" />
+  <circle cx="48" cy="18" r="2" fill="#ffffff" />
+</svg>

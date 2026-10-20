@@ -1,0 +1,61 @@
+name: Release Marketplace VSIX
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build, Package & Publish Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format Check
+        run: npm run format
+
+      - name: Run Test Suites
+        run: npm test
+
+      - name: Build Production Bundle
+        env:
+          NODE_ENV: production
+        run: npm run build
+
+      - name: Package VSIX
+        env:
+          NODE_ENV: production
+        run: npm run package
+
+      - name: Upload VSIX Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-git-graph-release-vsix
+          path: dist/*.vsix
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.vsix
+          generate_release_notes: true
+          draft: false
+          prerelease: false

@@ -1,0 +1,165 @@
+{
+  "name": "vscode-git-graph",
+  "displayName": "Git Graph",
+  "description": "View Git graph, branches, tags, and commits in VS Code",
+  "version": "0.2.0",
+  "publisher": "git-graph",
+  "icon": "resources/icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/git-graph/vscode-git-graph.git"
+  },
+  "bugs": {
+    "url": "https://github.com/git-graph/vscode-git-graph/issues"
+  },
+  "homepage": "https://github.com/git-graph/vscode-git-graph#readme",
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=18.0.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "keywords": [
+    "git",
+    "graph",
+    "history",
+    "branches",
+    "commits",
+    "tags",
+    "diff"
+  ],
+  "activationEvents": [
+    "onCommand:gitGraph.openGraph"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "gitGraph.openGraph",
+        "title": "View Git Graph",
+        "category": "Git Graph",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "gitGraph.viewFileHistory",
+        "title": "View History in Git Graph",
+        "category": "Git Graph",
+        "icon": "$(history)"
+      },
+      {
+        "command": "gitGraph.openFileAtRevision",
+        "title": "Open File at Revision",
+        "category": "Git Graph"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "gitGraph.openGraph"
+        },
+        {
+          "command": "gitGraph.viewFileHistory"
+        },
+        {
+          "command": "gitGraph.openFileAtRevision"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "gitGraph.openGraph",
+          "group": "navigation@1",
+          "when": "scmProvider == git"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "gitGraph.viewFileHistory",
+          "group": "7_modification@1"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "gitGraph.viewFileHistory",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Git Graph",
+      "properties": {
+        "gitGraph.pageSize": {
+          "type": "number",
+          "default": 500,
+          "minimum": 50,
+          "maximum": 5000,
+          "description": "Default number of commits to request per graph page."
+        },
+        "gitGraph.showAuthor": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the author column in the graph."
+        },
+        "gitGraph.showDate": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the date column in the graph."
+        },
+        "gitGraph.showRemoteBranches": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show remote branch references in the graph."
+        },
+        "gitGraph.showTags": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show tag references in the graph."
+        },
+        "gitGraph.dateType": {
+          "type": "string",
+          "enum": [
+            "relative",
+            "absolute"
+          ],
+          "default": "relative",
+          "description": "Default date format for commits in the graph."
+        },
+        "gitGraph.commitOrdering": {
+          "type": "string",
+          "enum": [
+            "date-order",
+            "topo-order",
+            "author-date-order"
+          ],
+          "enumDescriptions": [
+            "Display commits in commit timestamp order (--date-order).",
+            "Avoid interleaving commits from different branches (--topo-order).",
+            "Display commits ordered by author date (--author-date-order)."
+          ],
+          "default": "date-order",
+          "description": "Commit ordering strategy used in Git log."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node ../../scripts/bundle-extension.mjs",
+    "watch": "tsc -watch -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:unit": "vitest run",
+    "test:e2e": "vitest run test/e2e",
+    "package": "npx @vscode/vsce package --no-dependencies --out ../../dist/vscode-git-graph-0.2.0.vsix"
+  },
+  "dependencies": {
+    "@git-graph/git-core": "*",
+    "@git-graph/shared": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

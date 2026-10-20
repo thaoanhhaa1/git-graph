@@ -1,0 +1,172 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`M2.4 — Mandatory Topology Test Suite > Fixture 1: Linear history 1`] = `
+"Row 0 [lane 0, max 0]: c3 "feat: commit 3" (main)
+  -> straight (0,0) -> (1,0) color=0
+Row 1 [lane 0, max 0]: c2 "feat: commit 2"
+  -> straight (1,0) -> (2,0) color=0
+Row 2 [lane 0, max 0]: c1 "feat: commit 1"
+  -> straight (2,0) -> (3,0) color=0
+Row 3 [lane 0, max 0]: c0 "feat: commit 0""
+`;
+
+exports[`M2.4 — Mandatory Topology Test Suite > Fixture 2: Single unmerged branch 1`] = `
+"Row 0 [lane 0, max 0]: b1 "feat: branch commit" (feature)
+  -> straight (0,0) -> (1,0) color=0
+Row 1 [lane 1, max 1]: m2 "feat: main commit 2" (main)
+  -> pass-through (1,0) -> (2,0) color=0
+  -> merge (1,1) -> (2,0) color=1
+Row 2 [lane 0, max 0]: m1 "feat: main commit 1"
+  -> straight (2,0) -> (3,0) color=0
+Row 3 [lane 0, max 0]: m0 "feat: initial commit""
+`;
+
+exports[`M2.4 — Mandatory Topology Test Suite > Fixture 3: Fast-forward history 1`] = `
+"Row 0 [lane 0, max 0]: ff2 "ff: tip commit" (feature, main)
+  -> straight (0,0) -> (1,0) color=0
+Row 1 [lane 0, max 0]: ff1 "ff: middle commit"
+  -> straight (1,0) -> (2,0) color=0
+Row 2 [lane 0, max 0]: ff0 "ff: base commit""
+`;
+
+exports[`M2.4 — Mandatory Topology Test Suite > Fixture 4: Two-parent merge 1`] = `
+"Row 0 [lane 0, max 1]: m3 "merge: Merge feature into main" (main)
+  -> straight (0,0) -> (1,0) color=0
+  -> branch (0,0) -> (1,1) color=1
+Row 1 [lane 1, max 1]: b1 "feat: feature commit" (feature)
+  -> pass-through (1,0) -> (2,0) color=0
+  -> straight (1,1) -> (2,1) color=1
+Row 2 [lane 0, max 1]: m2 "chore: main commit before merge"
+  -> pass-through (2,1) -> (3,1) color=1
+  -> merge (2,0) -> (3,1) color=1
+Row 3 [lane 1, max 1]: m1 "chore: common ancestor"
+  -> straight (3,1) -> (4,1) color=1
+Row 4 [lane 1, max 1]: m0 "chore: root""
+`;
+
+exports[`M2.4 — Mandatory Topology Test Suite > Fixture 5: Criss-cross / multiple merge 1`] = `
+"Row 0 [lane 0, max 1]: m_final "merge: final criss-cross merge" (main)
+  -> straight (0,0) -> (1,0) color=0
+  -> branch (0,0) -> (1,1) color=1
+Row 1 [lane 1, max 2]: b2 "merge: b2 merged a1" (feat-b)
+  -> pass-through (1,0) -> (2,0) color=0
+  -> straight (1,1) -> (2,1) color=1
+  -> branch (1,1) -> (2,2) color=2
+Row 2 [lane 0, max 2]: a2 "merge: a2 merged b1" (feat-a)
+  -> pass-through (2,1) -> (3,1) color=1
+  -> pass-through (2,2) -> (3,2) color=2
+  -> merge (2,0) -> (3,2) color=2
+  -> merge (2,0) -> (3,1) color=1
+Row 3 [lane 1, max 2]: b1 "feat: b1 on branch B"
+  -> pass-through (3,2) -> (4,2) color=2
+  -> straight (3,1) -> (4,1) color=1
+Row 4 [lane 2, max 2]: a1 "feat: a1 on branch A"
+  -> pass-through (4,1) -> (5,1) color=1
+  -> merge (4,2) -> (5,1) color=2
+Row 5 [lane 1, max 1]: root "chore: initial root""
+`;
+
+exports[`M2.4 — Mandatory Topology Test Suite > Fixture 6: Nhiều branch đồng thời (Multiple concurrent branches) 1`] = `
+"Row 0 [lane 0, max 2]: m_all "merge: join all branches" (main)
+  -> straight (0,0) -> (1,0) color=0
+  -> branch (0,0) -> (1,1) color=1
+  -> branch (0,0) -> (1,2) color=2
+Row 1 [lane 0, max 2]: b3 "feat: branch 3" (feat-3)
+  -> pass-through (1,1) -> (2,1) color=1
+  -> pass-through (1,2) -> (2,2) color=2
+  -> straight (1,0) -> (2,0) color=0
+Row 2 [lane 1, max 2]: b2 "feat: branch 2" (feat-2)
+  -> pass-through (2,0) -> (3,0) color=0
+  -> pass-through (2,2) -> (3,2) color=2
+  -> merge (2,1) -> (3,0) color=1
+Row 3 [lane 2, max 2]: b1 "feat: branch 1" (feat-1)
+  -> pass-through (3,0) -> (4,0) color=0
+  -> merge (3,2) -> (4,0) color=2
+Row 4 [lane 0, max 0]: root "chore: root""
+`;
+
+exports[`M2.4 — Mandatory Topology Test Suite > Fixture 7: Octopus merge (4 parents) 1`] = `
+"Row 0 [lane 0, max 3]: octo "merge: octopus merge 4 parents" (main)
+  -> straight (0,0) -> (1,0) color=0
+  -> branch (0,0) -> (1,1) color=1
+  -> branch (0,0) -> (1,2) color=2
+  -> branch (0,0) -> (1,3) color=3
+Row 1 [lane 3, max 3]: p3 "topic 3" (topic-3)
+  -> pass-through (1,0) -> (2,0) color=0
+  -> pass-through (1,1) -> (2,1) color=1
+  -> pass-through (1,2) -> (2,2) color=2
+  -> straight (1,3) -> (2,3) color=3
+Row 2 [lane 2, max 3]: p2 "topic 2" (topic-2)
+  -> pass-through (2,0) -> (3,0) color=0
+  -> pass-through (2,1) -> (3,1) color=1
+  -> pass-through (2,3) -> (3,3) color=3
+  -> merge (2,2) -> (3,3) color=3
+Row 3 [lane 1, max 3]: p1 "topic 1" (topic-1)
+  -> pass-through (3,0) -> (4,0) color=0
+  -> pass-through (3,3) -> (4,3) color=3
+  -> merge (3,1) -> (4,3) color=3
+Row 4 [lane 0, max 3]: p0 "topic 0" (topic-0)
+  -> pass-through (4,3) -> (5,3) color=3
+  -> merge (4,0) -> (5,3) color=3
+Row 5 [lane 3, max 3]: root "root""
+`;
+
+exports[`M2.4 — Mandatory Topology Test Suite > Fixture 8: Root commit 1`] = `"Row 0 [lane 0, max 0]: root_on "Initial commit" (main)"`;
+
+exports[`M2.4 — Mandatory Topology Test Suite > Fixture 9: Detached HEAD 1`] = `
+"Row 0 [lane 0, max 0]: d_head "chore: detached HEAD state commit" (HEAD)
+  -> straight (0,0) -> (1,0) color=0
+Row 1 [lane 0, max 0]: c1 "feat: commit on main" (main)
+  -> straight (1,0) -> (2,0) color=0
+Row 2 [lane 0, max 0]: root "root""
+`;
+
+exports[`M2.4 — Mandatory Topology Test Suite > Fixture 10: Commit có parent ngoài page (boundary segment) 1`] = `
+"Row 0 [lane 0, max 1]: p1_c2 "commit with external parent" (main)
+  -> straight (0,0) -> (1,0) color=0
+  -> branch (0,0) -> (1,1) color=1
+Row 1 [lane 0, max 1]: p1_c1 "commit with external parent b"
+  -> pass-through (1,1) -> (2,1) color=1 [boundary]
+  -> straight (1,0) -> (2,0) color=0 [boundary]"
+`;
+
+exports[`M2.4 — Mandatory Topology Test Suite > Fixture 11: Hai page nối tiếp nhau (continuation stitching) 1`] = `
+"Row 0 [lane 0, max 1]: c4 "merge feature into main" (main)
+  -> straight (0,0) -> (1,0) color=0
+  -> branch (0,0) -> (1,1) color=1
+Row 1 [lane 0, max 1]: c3 "main commit 3"
+  -> pass-through (1,1) -> (2,1) color=1
+  -> straight (1,0) -> (2,0) color=0"
+`;
+
+exports[`M2.4 — Mandatory Topology Test Suite > Fixture 11: Hai page nối tiếp nhau (continuation stitching) 2`] = `
+"Row 2 [lane 1, max 1]: b2 "feature commit" (feature)
+  -> pass-through (2,0) -> (3,0) color=0
+  -> straight (2,1) -> (3,1) color=1
+Row 3 [lane 0, max 1]: c2 "main commit 2"
+  -> pass-through (3,1) -> (4,1) color=1
+  -> merge (3,0) -> (4,1) color=1
+Row 4 [lane 1, max 1]: root "root commit""
+`;
+
+exports[`M2.4 — Mandatory Topology Test Suite > Fixture 11: Hai page nối tiếp nhau (continuation stitching) 3`] = `
+"Row 0 [lane 0, max 1]: c4 "merge feature into main" (main)
+  -> straight (0,0) -> (1,0) color=0
+  -> branch (0,0) -> (1,1) color=1
+Row 1 [lane 0, max 1]: c3 "main commit 3"
+  -> pass-through (1,1) -> (2,1) color=1
+  -> straight (1,0) -> (2,0) color=0
+Row 2 [lane 1, max 1]: b2 "feature commit" (feature)
+  -> pass-through (2,0) -> (3,0) color=0
+  -> straight (2,1) -> (3,1) color=1
+Row 3 [lane 0, max 1]: c2 "main commit 2"
+  -> pass-through (3,1) -> (4,1) color=1
+  -> merge (3,0) -> (4,1) color=1
+Row 4 [lane 1, max 1]: root "root commit""
+`;
+
+exports[`M2.4 — Mandatory Topology Test Suite > Fixture 12: Nhiều ref cùng trỏ vào một commit 1`] = `
+"Row 0 [lane 0, max 0]: multi_r "release: release v1.0.0 with multiple refs" (HEAD, main, origin/main, v1.0.0, stash@{0})
+  -> straight (0,0) -> (1,0) color=0
+Row 1 [lane 0, max 0]: root "chore: root""
+`;
