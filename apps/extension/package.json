@@ -1,9 +1,9 @@
 {
-  "name": "vscode-git-graph",
-  "displayName": "Git Graph",
+  "name": "cts-git-graph",
+  "displayName": "Git Graph - CTS",
   "description": "View Git graph, branches, tags, and commits in VS Code",
   "version": "0.2.0",
-  "publisher": "git-graph",
+  "publisher": "CTS",
   "icon": "resources/icon.png",
   "license": "MIT",
   "repository": {
@@ -150,7 +150,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test:unit": "vitest run",
     "test:e2e": "vitest run test/e2e",
-    "package": "npx @vscode/vsce package --no-dependencies --out ../../dist/vscode-git-graph-0.2.0.vsix"
+    "package": "npx @vscode/vsce package --no-dependencies --out ../../dist/cts-git-graph-0.2.0.vsix"
   },
   "dependencies": {
     "@git-graph/git-core": "*",

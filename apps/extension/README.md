@@ -141,6 +141,10 @@ npm run package
 
 Packaging builds all workspaces, removes source maps, copies webview assets, and creates `dist/vscode-git-graph-0.2.0.vsix`.
 
+For detailed step-by-step guides:
+- [Testing Extension Guide](docs/testing-extension.md)
+- [Publishing Extension Guide](docs/publishing-extension.md)
+
 ---
 
 ## License

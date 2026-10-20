@@ -6,18 +6,35 @@ Tài liệu này hướng dẫn chi tiết từng bước (step-by-step) để �
 
 ## Mục Lục
 
-1. [Tổng Quan Quy Trình](#1-tổng-quan-quy-trình)
-2. [Bước 1: Tạo Tài Khoản & Personal Access Token (PAT) trên Azure DevOps](#bước-1-tạo-tài-khoản--personal-access-token-pat-trên-azure-devops)
-3. [Bước 2: Tạo Publisher trên VS Code Marketplace Portal](#bước-2-tạo-publisher-trên-vs-code-marketplace-portal)
-4. [Bước 3: Cấu Hình Thông Tin Extension Trong Codebase](#bước-3-cấu-hình-thông-tin-extension-trong-codebase)
-5. [Bước 4: Kiểm Tra Chất Lượng & Đóng Gói (Package VSIX)](#bước-4-kiểm-tra-chất-lượng--đóng-gói-package-vsix)
-6. [Bước 5: Tiến Hành Publish Extension Lên Marketplace](#bước-5-tiến-hành-publish-extension-lên-marketplace)
-   - [Cách A: Upload trực tiếp qua Web Portal (Khuyên dùng cho lần đầu)](#cách-a-upload-trực-tiếp-qua-web-portal-khuyên-dùng-cho-lần-đầu)
-   - [Cách B: Publish bằng dòng lệnh CLI (`@vscode/vsce`)](#cách-b-publish-bằng-dòng-lệnh-cli-vscodevsce)
-   - [Cách C: Tự động hóa qua GitHub Actions (CI/CD)](#cách-c-tự-động-hóa-qua-github-actions-cicd)
-7. [Bước 6: Kiểm Tra Sau Khi Publish & Cập Nhật Phiên Bản Mới](#bước-6-kiểm-tra-sau-khi-publish--cập-nhật-phiên-bản-mới)
-8. [Tùy Chọn: Publish lên Open VSX Registry (Cho VSCodium & Gitpod)](#tùy-chọn-publish-lên-open-vsx-registry-cho-vscodium--gitpod)
-9. [Xử Lý Các Lỗi Thường Gặp (Troubleshooting)](#xử-lý-các-lỗi-thường-gặp-troubleshooting)
+- [Hướng Dẫn Từng Bước Publish Extension Lên VS Code Marketplace](#hướng-dẫn-từng-bước-publish-extension-lên-vs-code-marketplace)
+  - [Mục Lục](#mục-lục)
+  - [1. Tổng Quan Quy Trình](#1-tổng-quan-quy-trình)
+  - [Bước 1: Tạo Tài Khoản \& Personal Access Token (PAT) trên Azure DevOps](#bước-1-tạo-tài-khoản--personal-access-token-pat-trên-azure-devops)
+  - [Bước 2: Tạo Publisher trên VS Code Marketplace Portal](#bước-2-tạo-publisher-trên-vs-code-marketplace-portal)
+  - [Bước 3: Cấu Hình Thông Tin Extension Trong Codebase](#bước-3-cấu-hình-thông-tin-extension-trong-codebase)
+    - [Các điểm cần lưu ý:](#các-điểm-cần-lưu-ý)
+  - [Bước 4: Kiểm Tra Chất Lượng \& Đóng Gói (Package VSIX)](#bước-4-kiểm-tra-chất-lượng--đóng-gói-package-vsix)
+    - [1. Kiểm tra chất lượng (Verification)](#1-kiểm-tra-chất-lượng-verification)
+    - [2. Chạy lệnh đóng gói VSIX](#2-chạy-lệnh-đóng-gói-vsix)
+    - [3. Cài đặt thử nghiệm cục bộ trước khi phát hành](#3-cài-đặt-thử-nghiệm-cục-bộ-trước-khi-phát-hành)
+  - [Bước 5: Tiến Hành Publish Extension Lên Marketplace](#bước-5-tiến-hành-publish-extension-lên-marketplace)
+    - [Cách A: Upload trực tiếp qua Web Portal (Khuyên dùng cho lần đầu)](#cách-a-upload-trực-tiếp-qua-web-portal-khuyên-dùng-cho-lần-đầu)
+    - [Cách B: Publish bằng dòng lệnh CLI (`@vscode/vsce`)](#cách-b-publish-bằng-dòng-lệnh-cli-vscodevsce)
+      - [1. Đăng nhập và xác thực Publisher với Token](#1-đăng-nhập-và-xác-thực-publisher-với-token)
+      - [2. Publish file VSIX đã đóng gói](#2-publish-file-vsix-đã-đóng-gói)
+    - [Cách C: Tự động hóa qua GitHub Actions (CI/CD)](#cách-c-tự-động-hóa-qua-github-actions-cicd)
+  - [Bước 6: Kiểm Tra Sau Khi Publish \& Cập Nhật Phiên Bản Mới](#bước-6-kiểm-tra-sau-khi-publish--cập-nhật-phiên-bản-mới)
+    - [1. Kiểm tra trên Marketplace](#1-kiểm-tra-trên-marketplace)
+    - [2. Quy trình cập nhật phiên bản mới (Release Update)](#2-quy-trình-cập-nhật-phiên-bản-mới-release-update)
+  - [Tùy Chọn: Publish lên Open VSX Registry (Cho VSCodium \& Gitpod)](#tùy-chọn-publish-lên-open-vsx-registry-cho-vscodium--gitpod)
+  - [Xử Lý Các Lỗi Thường Gặp (Troubleshooting)](#xử-lý-các-lỗi-thường-gặp-troubleshooting)
+    - [1. `Error: Failed request: 401 Unauthorized`](#1-error-failed-request-401-unauthorized)
+    - [2. `Error: Publisher ID '<A>' provided in the extension manifest should match the publisher ID '<B>' under which you are trying to publish this extension`](#2-error-publisher-id-a-provided-in-the-extension-manifest-should-match-the-publisher-id-b-under-which-you-are-trying-to-publish-this-extension)
+    - [3. `Error: The extension '<name>' already exists in the Marketplace. Please use a different 'name' in the package.json file`](#3-error-the-extension-name-already-exists-in-the-marketplace-please-use-a-different-name-in-the-packagejson-file)
+    - [4. `Error: This extension display name is taken. Please try a different one`](#4-error-this-extension-display-name-is-taken-please-try-a-different-one)
+    - [5. `Error: Extension already exists / Version already published`](#5-error-extension-already-exists--version-already-published)
+    - [6. `Error: This extension is missing a README.md / LICENSE`](#6-error-this-extension-is-missing-a-readmemd--license)
+    - [5. `Error: VSIX package exceeds maximum allowed size`](#5-error-vsix-package-exceeds-maximum-allowed-size)
 
 ---
 
@@ -93,11 +110,11 @@ Hãy mở file `apps/extension/package.json` và cập nhật các trường sau
 
 ```json
 {
-  "name": "vscode-git-graph",
-  "displayName": "Git Graph",
+  "name": "cts-git-graph",
+  "displayName": "Git Graph - CTS",
   "description": "View Git graph, branches, tags, and commits in VS Code",
   "version": "0.2.0",
-  "publisher": "<YOUR_PUBLISHER_ID>",
+  "publisher": "CTS",
   "icon": "resources/icon.png",
   "license": "MIT",
   "repository": {
@@ -164,7 +181,7 @@ Lệnh này sẽ tự động thực hiện chuỗi tác vụ:
 2. `npm run prepare:vsix`: Sao chép Webview bundle, runtime dependencies, strip sourcemap, copy `README.md`, `CHANGELOG.md`, `LICENSE`, thư mục `resources/` (icon, banner).
 3. `@vscode/vsce package`: Đóng gói thành file `.vsix` tại:
    ```text
-   dist/vscode-git-graph-0.2.0.vsix
+   dist/cts-git-graph-0.2.0.vsix
    ```
 
 ### 3. Cài đặt thử nghiệm cục bộ trước khi phát hành
@@ -172,7 +189,7 @@ Lệnh này sẽ tự động thực hiện chuỗi tác vụ:
 Trước khi tải lên Marketplace, hãy cài thử nghiệm file `.vsix` vừa tạo vào VS Code của bạn:
 
 ```sh
-code --install-extension dist/vscode-git-graph-0.2.0.vsix --force
+code --install-extension dist/cts-git-graph-0.2.0.vsix --force
 ```
 
 Mở một dự án Git bất kỳ, nhấn `Cmd+Shift+P` (macOS) hoặc `Ctrl+Shift+P` (Windows/Linux) và chạy command:
@@ -192,7 +209,7 @@ Bạn có thể lựa chọn 1 trong 3 cách dưới đây:
 2. Chọn Publisher của bạn.
 3. Bấm vào nút dropdown **+ New extension** -> chọn **Visual Studio Code**.
 4. Cửa sổ upload hiện ra:
-   - Kéo và thả file `dist/vscode-git-graph-0.2.0.vsix` vào khung, hoặc bấm **Browse** để chọn file.
+   - Kéo và thả file `dist/cts-git-graph-0.2.0.vsix` vào khung, hoặc bấm **Browse** để chọn file.
 5. Bấm **Upload**.
 6. Hệ thống Marketplace sẽ tiếp nhận file và hiển thị trạng thái `Verifying`.
 7. Sau khoảng 2 - 5 phút, khi trạng thái chuyển sang màu xanh lá cây hoặc hiển thị version mới, extension của bạn đã được phát hành thành công!
@@ -222,13 +239,13 @@ Dán chuỗi Personal Access Token (PAT) đã tạo ở Bước 1 vào rồi nh�
 Chạy lệnh publish trực tiếp từ thư mục gốc của repository:
 
 ```sh
-npx @vscode/vsce publish --packagePath dist/vscode-git-graph-0.2.0.vsix
+npx @vscode/vsce publish --packagePath dist/cts-git-graph-0.2.0.vsix
 ```
 
 Hoặc bạn có thể truyền thẳng PAT vào cờ `-p`:
 
 ```sh
-npx @vscode/vsce publish --packagePath dist/vscode-git-graph-0.2.0.vsix -p <YOUR_PERSONAL_ACCESS_TOKEN>
+npx @vscode/vsce publish --packagePath dist/cts-git-graph-0.2.0.vsix -p <YOUR_PERSONAL_ACCESS_TOKEN>
 ```
 
 > [!NOTE]
@@ -272,11 +289,11 @@ Repository đã có sẵn workflow release tại `.github/workflows/release.yml`
 - **Thời gian lập chỉ mục (Indexing)**: Sau khi publish thành công, Marketplace cần khoảng 5 - 15 phút để quét an toàn, kiểm tra virus và đưa extension vào công cụ tìm kiếm.
 - **Đường dẫn trang extension**:
   ```text
-  https://marketplace.visualstudio.com/items?itemName=<YOUR_PUBLISHER_ID>.vscode-git-graph
+  https://marketplace.visualstudio.com/items?itemName=CTS.cts-git-graph
   ```
 - **Kiểm tra trực tiếp trong VS Code**:
   - Mở VS Code -> Mở tab Extensions (`Cmd+Shift+X` hoặc `Ctrl+Shift+X`).
-  - Gõ tìm kiếm: `@id:<YOUR_PUBLISHER_ID>.vscode-git-graph` hoặc tên `Git Graph`.
+  - Gõ tìm kiếm: `@id:CTS.cts-git-graph` hoặc tên `Git Graph`.
   - Nhấn **Install** để trải nghiệm như một người dùng cuối.
 
 ### 2. Quy trình cập nhật phiên bản mới (Release Update)
@@ -306,7 +323,7 @@ Nếu bạn muốn extension tiếp cận cộng đồng này:
 3. Tạo Access Token trên Open VSX Settings.
 4. Chạy lệnh publish:
    ```sh
-   npx ovsx publish dist/vscode-git-graph-0.2.0.vsix -p <YOUR_OPEN_VSX_TOKEN>
+   npx ovsx publish dist/cts-git-graph-0.2.0.vsix -p <YOUR_OPEN_VSX_TOKEN>
    ```
 
 ---
@@ -320,15 +337,31 @@ Nếu bạn muốn extension tiếp cận cộng đồng này:
   2. Tạo token mới và chắc chắn chọn Organization: **All accessible organizations**.
   3. Chọn scope: **Marketplace -> Manage**.
 
-### 2. `Error: Publisher '<ID>' not found`
-- **Nguyên nhân**: Giá trị `"publisher"` trong `apps/extension/package.json` không khớp với ID Publisher bạn đã tạo trên [Marketplace Management Portal](https://marketplace.visualstudio.com/manage).
-- **Cách khắc phục**: Kiểm tra lại Publisher ID (lưu ý phân biệt giữa ID định danh kỹ thuật và Display Name hiển thị).
+### 2. `Error: Publisher ID '<A>' provided in the extension manifest should match the publisher ID '<B>' under which you are trying to publish this extension`
+- **Nguyên nhân**: Trường `"publisher"` trong `apps/extension/package.json` (ví dụ `git-graph`) không khớp với Publisher ID của tài khoản bạn đang dùng để upload trên Marketplace (ví dụ `CTS`).
+- **Cách khắc phục**:
+  1. Mở file [apps/extension/package.json](file:///Users/thaoanhhaa1/Documents/IT/Personal/Extension-vscode/git-graph/apps/extension/package.json).
+  2. Sửa `"publisher": "git-graph"` thành `"publisher": "<YOUR_PUBLISHER_ID>"` (ví dụ: `"publisher": "CTS"`).
+  3. Chạy lại `npm run package` để đóng gói lại file `.vsix` mới với publisher đúng rồi upload lại.
 
-### 3. `Error: Extension already exists / Version already published`
+### 3. `Error: The extension '<name>' already exists in the Marketplace. Please use a different 'name' in the package.json file`
+- **Nguyên nhân**: Tên định danh kỹ thuật `name` (như `vscode-git-graph`) đã được đăng ký hoặc đặt chỗ trước đó trên Visual Studio Marketplace bởi nhà phát triển khác.
+- **Cách khắc phục**:
+  1. Đổi trường `"name"` trong [apps/extension/package.json](file:///Users/thaoanhhaa1/Documents/IT/Personal/Extension-vscode/git-graph/apps/extension/package.json) thành tên duy nhất khác (ví dụ: `"cts-git-graph"`).
+  2. Chạy `npm run package` để build lại file VSIX mới (`dist/cts-git-graph-0.2.0.vsix`).
+
+### 4. `Error: This extension display name is taken. Please try a different one`
+- **Nguyên nhân**: Tên hiển thị công khai `displayName` (như `"Git Graph"`) đã được đăng ký trước đó trên Marketplace (bởi extension nguyên bản `mhutchie.git-graph`). Marketplace ngăn chặn các extension khác đặt tên hiển thị giống hệt 100% để tránh nhầm lẫn cho người dùng.
+- **Cách khắc phục**:
+  1. Mở file [apps/extension/package.json](file:///Users/thaoanhhaa1/Documents/IT/Personal/Extension-vscode/git-graph/apps/extension/package.json).
+  2. Đổi `"displayName"` thành tên mang thương hiệu riêng hoặc mô tả rõ ràng hơn (ví dụ: `"Git Graph - CTS"` hoặc `"Git Graph Viewer"`).
+  3. Chạy `npm run package` để đóng gói lại.
+
+### 5. `Error: Extension already exists / Version already published`
 - **Nguyên nhân**: Phiên bản bạn đang upload (`version`) đã từng được publish lên Marketplace trước đó.
 - **Cách khắc phục**: Tăng version trong `apps/extension/package.json` và root `package.json` (ví dụ từ `0.2.0` -> `0.2.1`), sau đó chạy lại `npm run package`.
 
-### 4. `Error: This extension is missing a README.md / LICENSE`
+### 6. `Error: This extension is missing a README.md / LICENSE`
 - **Nguyên nhân**: Đóng gói bằng lệnh `vsce package` thủ công mà không chạy qua script chuẩn của dự án.
 - **Cách khắc phục**: Luôn sử dụng lệnh `npm run package` tại thư mục gốc repo. Lệnh này gọi `scripts/prepare-vsix.mjs` để tự động chuẩn bị đầy đủ README, CHANGELOG, LICENSE và Webview assets vào thư mục extension trước khi đóng gói.
 
