@@ -230,7 +230,8 @@ body {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px 8px;
   padding: 4px 10px;
   background-color: var(--vscode-sideBar-background, #1e2029);
   border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
@@ -241,17 +242,32 @@ body {
 .toolbar-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.toolbar-filters {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.toolbar-actions {
+  flex-shrink: 0;
+  margin-left: auto;
+  gap: 2px;
 }
 
 .toolbar-spacer {
   flex: 1;
+  min-width: 0;
 }
 
 .toolbar-control-wrapper {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .toolbar-label {
@@ -260,6 +276,7 @@ body {
   font-weight: 600;
   white-space: nowrap;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .toolbar-checkbox-label {
@@ -271,7 +288,9 @@ body {
   font-weight: 500;
   cursor: pointer;
   user-select: none;
-  margin-left: 4px;
+  margin-left: 2px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .toolbar-checkbox {
@@ -293,6 +312,7 @@ body {
   width: 26px;
   height: 24px;
   font-size: 14px;
+  flex-shrink: 0;
   transition: all 0.12s ease;
 }
 
@@ -305,13 +325,74 @@ body {
 .toolbar-search-wrapper {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
-@media (max-width: 300px) {
-  .toolbar-label,
-  .toolbar-checkbox-label > span,
-  .toolbar-current-branch-badge .current-branch-label {
+/* Responsive Toolbar Breakpoints */
+@media (max-width: 1250px) {
+  .toolbar-label {
     display: none;
+  }
+}
+
+@media (max-width: 1050px) {
+  .toolbar {
+    padding: 3px 6px;
+    gap: 4px 6px;
+  }
+  .toolbar-checkbox-label > span {
+    display: none;
+  }
+  .select-control {
+    max-width: 130px;
+    padding-right: 18px;
+  }
+  .path-filter-input {
+    width: 95px !important;
+  }
+  .search-input {
+    width: 110px !important;
+  }
+}
+
+@media (max-width: 850px) {
+  .select-control {
+    max-width: 100px;
+  }
+  .path-filter-input {
+    width: 80px !important;
+  }
+  .search-input {
+    width: 95px !important;
+  }
+  .btn-toolbar-action {
+    width: 22px;
+    height: 22px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 700px) {
+  .select-control {
+    max-width: 85px;
+  }
+  .path-filter-input {
+    width: 70px !important;
+  }
+}
+
+@media (max-width: 550px) {
+  .select-control {
+    max-width: 75px;
+  }
+  .toolbar-actions {
+    gap: 1px;
+  }
+  .btn-toolbar-action {
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
   }
 }
 
@@ -464,9 +545,11 @@ body {
 /* Main Viewport Content */
 .content-area {
   flex: 1;
-  overflow: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  min-width: 0;
 }
 
 /* Repository Placeholder UI */
@@ -512,12 +595,17 @@ body {
 /* Commit Placeholder Table */
 .commit-table-container {
   flex: 1;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   position: relative;
+  min-height: 0;
+  min-width: 0;
 }
 
 .commit-table {
   width: 100%;
+  min-width: 0;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--font-size);
 }
@@ -669,7 +757,7 @@ body {
 }
 
 .commit-cell-message {
-  max-width: 520px;
+  min-width: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -699,6 +787,63 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   display: block;
+}
+
+/* Responsive Commit Table Columns */
+@media (max-width: 850px) {
+  .commit-col-date,
+  .commit-cell-date {
+    width: 95px !important;
+    min-width: 95px !important;
+    max-width: 95px !important;
+    padding: 2px 6px !important;
+  }
+  .commit-col-author,
+  .commit-cell-author {
+    width: 90px !important;
+    min-width: 90px !important;
+    max-width: 90px !important;
+    padding: 2px 6px !important;
+  }
+  .commit-col-commit,
+  .commit-cell-hash {
+    width: 75px !important;
+    min-width: 75px !important;
+    max-width: 75px !important;
+    padding: 2px 6px !important;
+  }
+  .ref-badge,
+  .ref-tag {
+    max-width: 180px;
+  }
+}
+
+@media (max-width: 650px) {
+  .commit-col-date,
+  .commit-cell-date {
+    width: 80px !important;
+    min-width: 80px !important;
+    max-width: 80px !important;
+    padding: 2px 4px !important;
+  }
+  .commit-col-author,
+  .commit-cell-author {
+    width: 75px !important;
+    min-width: 75px !important;
+    max-width: 75px !important;
+    padding: 2px 4px !important;
+  }
+  .commit-col-commit,
+  .commit-cell-hash {
+    width: 65px !important;
+    min-width: 65px !important;
+    max-width: 65px !important;
+    padding: 2px 4px !important;
+  }
+  .ref-badge,
+  .ref-tag {
+    max-width: 130px;
+  }
 }
 
 /* Ref Badges */
@@ -920,39 +1065,9 @@ body {
   outline: 1px dashed #ffffff !important;
 }
 
-/* Toolbar Current Branch Pill */
+/* Toolbar Current Branch Pill (hidden) */
 .toolbar-current-branch-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
-  background-color: rgba(56, 139, 253, 0.15);
-  border: 1px solid rgba(56, 139, 253, 0.4);
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #58a6ff;
-  user-select: none;
-  max-width: 200px;
-  white-space: nowrap;
-}
-
-.toolbar-current-branch-badge .current-branch-dot {
-  color: #3fb950;
-  font-size: 8px;
-  line-height: 1;
-}
-
-.toolbar-current-branch-badge .current-branch-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.vscode-light .toolbar-current-branch-badge {
-  background-color: #ddf4ff;
-  border-color: #54aeff;
-  color: #0969da;
+  display: none !important;
 }
 
 /* View Config Menu */
@@ -1654,6 +1769,26 @@ body.vscode-high-contrast-light .commit-action-menu-item.focused,
   gap: 16px;
   overflow: hidden;
   flex: 1;
+}
+
+@media (max-width: 768px) {
+  .commit-details-panel {
+    max-height: 480px;
+    padding: 8px 10px;
+  }
+  .commit-details-main-layout {
+    flex-direction: column;
+    overflow-y: auto;
+    gap: 12px;
+  }
+  .commit-details-left-section {
+    flex: none;
+    padding-right: 0;
+  }
+  .commit-details-right-section {
+    flex: none;
+    min-height: 180px;
+  }
 }
 
 .commit-details-loading,
@@ -3033,6 +3168,26 @@ body.vscode-high-contrast-light .parent-select-btn.active,
   color: var(--color-fg, #d8dee9);
   max-height: calc(100vh - 32px);
   overflow-y: auto;
+}
+
+@media (max-width: 600px) {
+  .compare-branch-dialog,
+  .rename-branch-dialog,
+  .delete-branch-dialog,
+  .create-branch-dialog,
+  .create-tag-dialog,
+  .delete-tag-dialog,
+  .merge-dialog,
+  .rebase-dialog,
+  .reset-dialog,
+  .cherry-pick-dialog,
+  .revert-dialog,
+  .discard-dialog,
+  .stash-save-dialog,
+  .stash-manager-dialog {
+    padding: 12px 14px;
+    max-width: 100%;
+  }
 }
 
 .create-tag-title,

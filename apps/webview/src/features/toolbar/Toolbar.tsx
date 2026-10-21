@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import { RepositorySelector } from '../repository/RepositorySelector';
 import { BranchSelector } from './BranchSelector';
 import { AuthorSelector } from './AuthorSelector';
-import { DateRangeSelector } from './DateRangeSelector';
-import { PathFilter } from './PathFilter';
 import { SearchInput } from '../search/SearchInput';
 import { ViewConfigMenu } from './ViewConfigMenu';
 import { Button } from '../../components/ui/Button';
@@ -87,7 +85,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   return (
     <header className="toolbar" role="toolbar" aria-label="Git Graph Toolbar">
-      <div className="toolbar-group">
+      <div className="toolbar-group toolbar-filters">
         <label htmlFor="repo-select" className="sr-only" style={{ display: 'none' }}>
           Repository
         </label>
@@ -112,6 +110,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             title={`Current branch: ${activeRepo.currentBranch}`}
             aria-label={`Current branch: ${activeRepo.currentBranch}`}
             data-testid="toolbar-current-branch"
+            style={{ display: 'none' }}
           >
             <span className="current-branch-dot">●</span>
             <span className="current-branch-label">{activeRepo.currentBranch}</span>
@@ -119,10 +118,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         )}
 
         <AuthorSelector id="author-select" />
-
-        <DateRangeSelector id="date-range-select" />
-
-        <PathFilter id="path-filter-input" />
 
         <label className="toolbar-checkbox-label" title="Show remote branches">
           <Checkbox
@@ -138,7 +133,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       <div className="toolbar-spacer" />
 
-      <div className="toolbar-group">
+      <div className="toolbar-group toolbar-actions">
         {/* 1. Find HEAD button */}
         <Button
           variant="icon"

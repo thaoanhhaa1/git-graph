@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import esbuild from 'esbuild';
@@ -15,5 +16,11 @@ await esbuild.build({
   sourcemap: process.env.NODE_ENV === 'production' ? false : true,
   sourcesContent: false,
 });
+
+const webviewDist = path.join(repoRoot, 'apps', 'webview', 'dist');
+const extensionWebviewUi = path.join(repoRoot, 'apps', 'extension', 'dist', 'webview-ui');
+if (fs.existsSync(webviewDist)) {
+  fs.cpSync(webviewDist, extensionWebviewUi, { recursive: true });
+}
 
 console.log('Bundled extension runtime.');

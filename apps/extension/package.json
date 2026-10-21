@@ -2,18 +2,18 @@
   "name": "cts-git-graph",
   "displayName": "Git Graph - CTS",
   "description": "View Git graph, branches, tags, and commits in VS Code",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "CTS",
   "icon": "resources/icon.png",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/git-graph/vscode-git-graph.git"
+    "url": "https://github.com/thaoanhhaa1/git-graph.git"
   },
   "bugs": {
-    "url": "https://github.com/git-graph/vscode-git-graph/issues"
+    "url": "https://github.com/thaoanhhaa1/git-graph/issues"
   },
-  "homepage": "https://github.com/git-graph/vscode-git-graph#readme",
+  "homepage": "https://github.com/thaoanhhaa1/git-graph#readme",
   "engines": {
     "vscode": "^1.85.0",
     "node": ">=18.0.0"
@@ -32,7 +32,7 @@
     "diff"
   ],
   "activationEvents": [
-    "onCommand:gitGraph.openGraph"
+    "workspaceContains:.git"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -90,6 +90,11 @@
     "configuration": {
       "title": "Git Graph",
       "properties": {
+        "gitGraph.showStatusBarItem": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a status bar item to open Git Graph."
+        },
         "gitGraph.pageSize": {
           "type": "number",
           "default": 500,
@@ -150,7 +155,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test:unit": "vitest run",
     "test:e2e": "vitest run test/e2e",
-    "package": "npx @vscode/vsce package --no-dependencies --out ../../dist/cts-git-graph-0.2.0.vsix"
+    "package": "npx @vscode/vsce package --no-dependencies --out ../../dist/"
   },
   "dependencies": {
     "@git-graph/git-core": "*",

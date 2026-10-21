@@ -173,6 +173,7 @@ export class MockWebviewPanel {
   public active = true;
   public webview: MockWebview;
   public isDisposed = false;
+  public iconPath?: Uri | { readonly light: Uri; readonly dark: Uri };
 
   private _onDidDisposeEmitter = new EventEmitter<void>();
   private _onDidChangeViewStateEmitter = new EventEmitter<{ webviewPanel: MockWebviewPanel }>();
@@ -376,11 +377,17 @@ export const window = {
 };
 
 const _onDidChangeWorkspaceFoldersEmitter = new EventEmitter<void>();
+const _onDidChangeConfigurationEmitter = new EventEmitter<{
+  affectsConfiguration: (section: string) => boolean;
+}>();
 
 export const workspace = {
   workspaceFolders: undefined as Array<{ uri: Uri; name: string; index: number }> | undefined,
   onDidChangeWorkspaceFolders: _onDidChangeWorkspaceFoldersEmitter.event,
   _fireDidChangeWorkspaceFolders: () => _onDidChangeWorkspaceFoldersEmitter.fire(),
+  onDidChangeConfiguration: _onDidChangeConfigurationEmitter.event,
+  _fireDidChangeConfiguration: (section: string) =>
+    _onDidChangeConfigurationEmitter.fire({ affectsConfiguration: (s: string) => s === section }),
   getConfiguration: (_section?: string) => ({
     get: <T>(_key: string, defaultValue?: T): T | undefined => defaultValue,
     update: async (_key: string, _value: unknown, _target?: unknown): Promise<void> => {},

@@ -96,8 +96,8 @@ describe('GitGraphStatusBar', () => {
 
     const item = statusBar.statusBarItem;
     expect(item.command).toBe('gitGraph.openGraph');
-    expect(item.tooltip).toBe('Open Git Graph (Workspace)');
-    expect(item.text).toBe('$(git-branch) main ↑2 ↓1');
+    expect(item.tooltip).toBe('Git Graph CTS: main ↑2 ↓1\nClick to view Git Graph');
+    expect(item.text).toBe('$(git-branch) Git Graph CTS ↑2 ↓1');
     expect((item as unknown as { visible: boolean }).visible).toBe(true);
 
     statusBar.dispose();
@@ -126,7 +126,8 @@ describe('GitGraphStatusBar', () => {
 
     await statusBar.update();
 
-    expect(statusBar.statusBarItem.text).toBe('$(git-branch) feature');
+    expect(statusBar.statusBarItem.text).toBe('$(git-branch) Git Graph CTS');
+    expect(statusBar.statusBarItem.tooltip).toBe('Git Graph CTS: feature\nClick to view Git Graph');
     statusBar.dispose();
   });
 
@@ -158,7 +159,29 @@ describe('GitGraphStatusBar', () => {
 
     await statusBar.update();
 
-    expect(statusBar.statusBarItem.text).toBe('$(git-branch) (fedcba9)');
+    expect(statusBar.statusBarItem.text).toBe('$(git-branch) Git Graph CTS');
+    expect(statusBar.statusBarItem.tooltip).toBe(
+      'Git Graph CTS: (fedcba9)\nClick to view Git Graph',
+    );
+    statusBar.dispose();
+  });
+
+  it('hides item when gitGraph.showStatusBarItem is configured to false', async () => {
+    vi.spyOn(vscode.workspace, 'getConfiguration').mockReturnValue({
+      get: vi.fn().mockImplementation((key: string, defaultValue?: unknown) => {
+        if (key === 'showStatusBarItem') {
+          return false;
+        }
+        return defaultValue;
+      }),
+      update: vi.fn(),
+    } as unknown as vscode.WorkspaceConfiguration);
+
+    const statusBar = createStatusBar();
+
+    await statusBar.update();
+
+    expect((statusBar.statusBarItem as unknown as { visible: boolean }).visible).toBe(false);
     statusBar.dispose();
   });
 

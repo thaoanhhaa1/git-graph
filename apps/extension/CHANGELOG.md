@@ -2,6 +2,15 @@
 
 All notable changes to Git Graph are documented in this file.
 
+## 0.2.1 - 2026-10-21
+
+### Fixed
+
+- Fixed broken banner and CI/Release badge images on Visual Studio Marketplace by referencing canonical HTTPS raw assets and updating repository URLs.
+- Added `master` branch to GitHub Actions CI workflow triggers (`.github/workflows/ci.yml`).
+- Enhanced responsive breakpoints for Toolbar and Commit Table layout on compact viewports.
+- Updated extension packaging script to target versioned output directory dynamically.
+
 ## 0.2.0 - 2026-10-19
 
 ### Added

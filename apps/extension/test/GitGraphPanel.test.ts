@@ -28,6 +28,7 @@ describe('GitGraphPanel', () => {
     expect(GitGraphPanel.currentPanel).toBe(panel);
     expect(panel.panel.title).toBe('Git Graph');
     expect(panel.panel.viewType).toBe(GitGraphPanel.viewType);
+    expect(panel.panel.iconPath).toBeDefined();
   });
 
   it('reveals existing panel and does not create duplicate when called again', () => {

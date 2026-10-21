@@ -19,8 +19,8 @@ export function resolveWebviewAssets(
   extensionUri: vscode.Uri,
 ): { scriptUri?: vscode.Uri; styleUri?: vscode.Uri } {
   const candidateDirs = [
-    path.join(extensionUri.fsPath, 'dist', 'webview-ui'),
     path.join(extensionUri.fsPath, '..', 'webview', 'dist'),
+    path.join(extensionUri.fsPath, 'dist', 'webview-ui'),
   ];
 
   let foundBaseDir: string | undefined;

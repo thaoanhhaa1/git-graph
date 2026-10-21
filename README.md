@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="resources/banner.png" alt="Git Graph for VS Code Banner" width="100%" />
+  <img src="https://raw.githubusercontent.com/thaoanhhaa1/git-graph/master/resources/banner.png" alt="Git Graph for VS Code Banner" width="100%" />
 </p>
 
 # Git Graph for VS Code
 
-[![CI](https://github.com/git-graph/vscode-git-graph/actions/workflows/ci.yml/badge.svg)](https://github.com/git-graph/vscode-git-graph/actions/workflows/ci.yml)
-[![Release](https://github.com/git-graph/vscode-git-graph/actions/workflows/release.yml/badge.svg)](https://github.com/git-graph/vscode-git-graph/actions/workflows/release.yml)
+[![CI](https://github.com/thaoanhhaa1/git-graph/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/thaoanhhaa1/git-graph/actions/workflows/ci.yml)
+[![Release](https://github.com/thaoanhhaa1/git-graph/actions/workflows/release.yml/badge.svg)](https://github.com/thaoanhhaa1/git-graph/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 **Git Graph** is a high-performance, developer-friendly VS Code extension for exploring Git histories in an interactive graph. It automatically discovers repositories across your workspace, renders branches, tags, merge topologies, and working tree changes, and exposes safe local Git operations directly from a responsive webview UI.
@@ -70,6 +70,7 @@ You can configure Git Graph in VS Code Settings (`settings.json`):
 
 | Setting | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
+| `gitGraph.showStatusBarItem` | `boolean` | `true` | Show a status bar item in the footer to open Git Graph. |
 | `gitGraph.pageSize` | `number` | `500` | Number of commits requested per graph page. |
 | `gitGraph.showAuthor` | `boolean` | `true` | Show or hide the Author column in the table. |
 | `gitGraph.showDate` | `boolean` | `true` | Show or hide the Date column in the table. |
@@ -139,7 +140,7 @@ npm run benchmark
 npm run package
 ```
 
-Packaging builds all workspaces, removes source maps, copies webview assets, and creates `dist/vscode-git-graph-0.2.0.vsix`.
+Packaging builds all workspaces, removes source maps, copies webview assets, and creates `dist/cts-git-graph-0.2.1.vsix`.
 
 For detailed step-by-step guides:
 - [Testing Extension Guide](docs/testing-extension.md)

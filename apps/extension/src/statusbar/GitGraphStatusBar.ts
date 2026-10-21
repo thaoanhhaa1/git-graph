@@ -31,7 +31,7 @@ export class GitGraphStatusBar implements vscode.Disposable {
 
     this._statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     this._statusBarItem.command = 'gitGraph.openGraph';
-    this._statusBarItem.tooltip = 'Open Git Graph (Workspace)';
+    this._statusBarItem.tooltip = 'View Git Graph CTS';
 
     this._disposables.push(
       this._statusBarItem,
@@ -44,6 +44,16 @@ export class GitGraphStatusBar implements vscode.Disposable {
       }),
       this._repositoryWatcher.onDidRepositoryChange(() => this.scheduleUpdate()),
     );
+
+    if (vscode.workspace.onDidChangeConfiguration) {
+      this._disposables.push(
+        vscode.workspace.onDidChangeConfiguration((e) => {
+          if (e.affectsConfiguration('gitGraph.showStatusBarItem')) {
+            this.scheduleUpdate();
+          }
+        }),
+      );
+    }
 
     if (vscode.window.onDidChangeActiveTextEditor) {
       this._disposables.push(
@@ -75,6 +85,13 @@ export class GitGraphStatusBar implements vscode.Disposable {
    * Refreshes the status bar item text and visibility from active repository state.
    */
   public async update(): Promise<void> {
+    const config = vscode.workspace.getConfiguration?.('gitGraph');
+    const showStatusBarItem = config?.get<boolean>('showStatusBarItem', true) ?? true;
+    if (!showStatusBarItem) {
+      this._statusBarItem.hide();
+      return;
+    }
+
     const activeRepo = this._repositoryManager.getActiveRepository();
     if (!activeRepo) {
       this._statusBarItem.hide();
@@ -93,12 +110,11 @@ export class GitGraphStatusBar implements vscode.Disposable {
       const currentBranch = refs.currentBranch;
 
       if (!currentBranch) {
-        if (head?.target) {
-          this._statusBarItem.text = `$(git-branch) (${head.target.slice(0, 7)})`;
-          this._statusBarItem.show();
-        } else {
-          this._statusBarItem.hide();
-        }
+        this._statusBarItem.text = '$(git-branch) Git Graph CTS';
+        this._statusBarItem.tooltip = head?.target
+          ? `Git Graph CTS: (${head.target.slice(0, 7)})\nClick to view Git Graph`
+          : 'View Git Graph CTS';
+        this._statusBarItem.show();
         return;
       }
 
@@ -129,7 +145,8 @@ export class GitGraphStatusBar implements vscode.Disposable {
         }
       }
 
-      this._statusBarItem.text = `$(git-branch) ${currentBranch}${aheadBehindSuffix}`;
+      this._statusBarItem.text = `$(git-branch) Git Graph CTS${aheadBehindSuffix}`;
+      this._statusBarItem.tooltip = `Git Graph CTS: ${currentBranch}${aheadBehindSuffix}\nClick to view Git Graph`;
       this._statusBarItem.show();
     } catch {
       this._statusBarItem.hide();

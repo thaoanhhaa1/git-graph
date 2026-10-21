@@ -175,6 +175,17 @@ export class GitGraphPanel implements vscode.Disposable {
     ];
   }
 
+  public static getPanelIconPath(extensionUri: vscode.Uri): {
+    readonly light: vscode.Uri;
+    readonly dark: vscode.Uri;
+  } {
+    const iconUri = vscode.Uri.joinPath(extensionUri, 'resources', 'icon.svg');
+    return {
+      light: iconUri,
+      dark: iconUri,
+    };
+  }
+
   public constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
@@ -185,6 +196,7 @@ export class GitGraphPanel implements vscode.Disposable {
     gitOperationService?: GitOperationService,
   ) {
     this._panel = panel;
+    this._panel.iconPath = GitGraphPanel.getPanelIconPath(extensionUri);
     this._extensionUri = extensionUri;
     this._repositoryManager = repositoryManager ?? new RepositoryManager();
     this._refreshCoordinator =

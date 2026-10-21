@@ -560,6 +560,7 @@ export const CommitList: React.FC<CommitListProps> = ({
           <tr role="row">
             <th
               role="columnheader"
+              className="commit-col-graph"
               style={{
                 width: columnWidths.graph ?? graphColWidth,
                 minWidth: columnWidths.graph ?? graphColWidth,
@@ -577,9 +578,10 @@ export const CommitList: React.FC<CommitListProps> = ({
             </th>
             <th
               role="columnheader"
+              className="commit-col-description"
               style={{
                 width: columnWidths.description,
-                minWidth: columnWidths.description ?? 100,
+                minWidth: columnWidths.description ?? 0,
                 position: 'relative',
               }}
             >
@@ -594,6 +596,7 @@ export const CommitList: React.FC<CommitListProps> = ({
             {effectiveShowDate && (
               <th
                 role="columnheader"
+                className="commit-col-date"
                 style={{
                   width: columnWidths.date ?? 130,
                   minWidth: columnWidths.date ?? 130,
@@ -612,6 +615,7 @@ export const CommitList: React.FC<CommitListProps> = ({
             {effectiveShowAuthor && (
               <th
                 role="columnheader"
+                className="commit-col-author"
                 style={{
                   width: columnWidths.author ?? 120,
                   minWidth: columnWidths.author ?? 120,
@@ -629,6 +633,7 @@ export const CommitList: React.FC<CommitListProps> = ({
             )}
             <th
               role="columnheader"
+              className="commit-col-commit"
               style={{
                 width: columnWidths.commit ?? 90,
                 minWidth: columnWidths.commit ?? 90,
