@@ -148,16 +148,8 @@ export class GitGraphStatusBar implements vscode.Disposable {
         aheadBehindSuffix += ` ↓${behind}`;
       }
 
-      if (behind > 0) {
-        this._statusBarItem.command = 'gitGraph.pull';
-        this._statusBarItem.tooltip = `Git Graph CTS: ${currentBranch}${aheadBehindSuffix}\nClick to pull ${behind} commit${behind === 1 ? '' : 's'}`;
-      } else if (ahead > 0) {
-        this._statusBarItem.command = 'gitGraph.push';
-        this._statusBarItem.tooltip = `Git Graph CTS: ${currentBranch}${aheadBehindSuffix}\nClick to push ${ahead} commit${ahead === 1 ? '' : 's'}`;
-      } else {
-        this._statusBarItem.command = 'gitGraph.openGraph';
-        this._statusBarItem.tooltip = `Git Graph CTS: ${currentBranch}${aheadBehindSuffix}\nClick to view Git Graph`;
-      }
+      this._statusBarItem.command = 'gitGraph.openGraph';
+      this._statusBarItem.tooltip = `Git Graph CTS: ${currentBranch}${aheadBehindSuffix}\nClick to view Git Graph`;
 
       this._statusBarItem.text = `$(git-branch) Git Graph CTS${aheadBehindSuffix}`;
       this._statusBarItem.show();
