@@ -286,6 +286,48 @@ rename src/app.ts => dst/app.ts (92%)`;
     });
   });
 
+  describe('parseRawDiff', () => {
+    it('parses modified, added, deleted, and renamed entries', () => {
+      const raw = [
+        ':100644 100644 aaaaaaa bbbbbbb M\tsrc/app.ts',
+        ':000000 100644 0000000 ccccccc A\tdocs/new.md',
+        ':100644 000000 ddddddd 0000000 D\tlegacy.txt',
+        ':100644 100644 eeeeeee fffffff R100\told/name.ts\tnew/name.ts',
+      ].join('\n');
+
+      const entries = DiffStatParser.parseRawDiff(raw);
+
+      expect(entries).toHaveLength(4);
+      expect(entries[0]).toMatchObject({ path: 'src/app.ts', status: 'modified' });
+      expect(entries[1]).toMatchObject({ path: 'docs/new.md', status: 'added' });
+      expect(entries[2]).toMatchObject({ path: 'legacy.txt', status: 'deleted' });
+      expect(entries[3]).toMatchObject({
+        path: 'new/name.ts',
+        oldPath: 'old/name.ts',
+        status: 'renamed',
+        similarity: 100,
+      });
+    });
+
+    it('marks submodule changes when either mode is 160000', () => {
+      const raw = [
+        ':160000 160000 aaaaaaa bbbbbbb M\tvendor/lib',
+        ':100644 160000 ccccccc ddddddd M\tlibs/now-submodule',
+        ':160000 100644 eeeeeee fffffff M\tlibs/now-file',
+      ].join('\n');
+
+      const entries = DiffStatParser.parseRawDiff(raw);
+
+      expect(entries).toHaveLength(3);
+      expect(entries.every((entry) => entry.isSubmodule)).toBe(true);
+    });
+
+    it('ignores non-raw lines', () => {
+      expect(DiffStatParser.parseRawDiff('M\tsrc/app.ts\n')).toEqual([]);
+      expect(DiffStatParser.parseRawDiff('')).toEqual([]);
+    });
+  });
+
   describe('computeStats', () => {
     it('sums additions, deletions and counts filesChanged ignoring binary lines', () => {
       const changes = [

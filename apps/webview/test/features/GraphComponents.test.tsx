@@ -192,7 +192,7 @@ describe('SVG Graph Components', () => {
   });
 
   describe('GraphCell accessibility and layout', () => {
-    it('renders svg with role="presentation", aria-hidden="true" and NO text elements', async () => {
+    it('renders svg with an accessible label and NO text elements', async () => {
       const commit = makeMockCommit('c1', ['c0']);
       const row = createGraphRow({
         commit,
@@ -208,8 +208,9 @@ describe('SVG Graph Components', () => {
 
       const svg = container.querySelector('svg');
       expect(svg).toBeTruthy();
-      expect(svg?.getAttribute('role')).toBe('presentation');
-      expect(svg?.getAttribute('aria-hidden')).toBe('true');
+      expect(svg?.getAttribute('role')).toBe('img');
+      expect(svg?.getAttribute('aria-label')).toContain('Graph lane 1');
+      expect(svg?.getAttribute('aria-hidden')).toBeNull();
 
       // Accessibility rule: metadata must be in HTML table DOM, NEVER inside SVG
       const svgTextElements = container.querySelectorAll('svg text');

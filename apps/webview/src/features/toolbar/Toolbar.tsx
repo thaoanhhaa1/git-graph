@@ -7,6 +7,7 @@ import { ViewConfigMenu } from './ViewConfigMenu';
 import { Button } from '../../components/ui/Button';
 import { Checkbox } from '../../components/ui/Checkbox';
 import { Icon } from '../../components/ui/Icon';
+import { t } from '../../i18n';
 import { useRepositoryStore } from '../../stores/repositoryStore';
 import { useGraphStore } from '../../stores/graphStore';
 import { useConfigStore } from '../../stores/configStore';
@@ -20,16 +21,30 @@ import {
 export interface ToolbarProps {
   onRefresh?: () => void;
   onFetch?: () => void;
+  onPull?: () => void;
+  onPush?: () => void;
+  onManageRemotes?: () => void;
+  onManageWorktrees?: () => void;
+  onManageSubmodules?: () => void;
+  submoduleCount?: number;
   onStash?: () => void;
   onManageStashes?: () => void;
+  onOpenSettings?: () => void;
   searchDebounceMs?: number;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
   onRefresh,
   onFetch,
+  onPull,
+  onPush,
+  onManageRemotes,
+  onManageWorktrees,
+  onManageSubmodules,
+  submoduleCount = 0,
   onStash,
   onManageStashes,
+  onOpenSettings,
   searchDebounceMs = 250,
 }) => {
   const isRepoLoading = useRepositoryStore((s) => s.isLoading);
@@ -65,7 +80,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     if (onFetch) {
       onFetch();
     } else {
-      requestFetch();
+      requestFetch({ all: true, prune: true });
     }
   };
 
@@ -216,7 +231,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           aria-label="Repository Settings"
           data-tooltip="Repository Settings"
           data-tooltip-pos="bottom-right"
+          data-testid="toolbar-settings-btn"
           onClick={() => {
+            if (onOpenSettings) {
+              onOpenSettings();
+              return;
+            }
             const trigger = document.querySelector(
               '[data-testid="view-config-trigger"]',
             ) as HTMLButtonElement | null;
@@ -251,6 +271,89 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             data-testid="toolbar-stash-manager-btn"
           >
             <Icon name="archive" />
+          </Button>
+        ) : null}
+
+        {onPull ? (
+          <Button
+            variant="icon"
+            className="btn-toolbar-action"
+            title="Pull from remote"
+            aria-label="Pull from remote"
+            data-tooltip="Pull"
+            data-tooltip-pos="bottom-right"
+            onClick={onPull}
+            disabled={isBusy}
+            data-testid="toolbar-pull-btn"
+          >
+            <Icon name="pull" />
+          </Button>
+        ) : null}
+
+        {onPush ? (
+          <Button
+            variant="icon"
+            className="btn-toolbar-action"
+            title="Push to remote"
+            aria-label="Push to remote"
+            data-tooltip="Push"
+            data-tooltip-pos="bottom-right"
+            onClick={onPush}
+            disabled={isBusy}
+            data-testid="toolbar-push-btn"
+          >
+            <Icon name="push" />
+          </Button>
+        ) : null}
+
+        {onManageWorktrees ? (
+          <Button
+            variant="icon"
+            className="btn-toolbar-action"
+            title={t('toolbar.manageWorktrees')}
+            aria-label={t('toolbar.manageWorktrees')}
+            data-tooltip={t('worktree.title')}
+            data-tooltip-pos="bottom-right"
+            onClick={onManageWorktrees}
+            disabled={isBusy}
+            data-testid="toolbar-manage-worktrees-btn"
+          >
+            <Icon name="worktree" />
+          </Button>
+        ) : null}
+
+        {onManageSubmodules && submoduleCount > 0 ? (
+          <Button
+            variant="icon"
+            className="btn-toolbar-action"
+            title={t('toolbar.manageSubmodules')}
+            aria-label={t('toolbar.manageSubmodules')}
+            data-tooltip={t('submodule.title')}
+            data-tooltip-pos="bottom-right"
+            onClick={onManageSubmodules}
+            disabled={isBusy}
+            data-testid="toolbar-manage-submodules-btn"
+          >
+            <Icon name="tree" />
+            <span className="toolbar-count-badge" data-testid="toolbar-submodule-count">
+              {submoduleCount}
+            </span>
+          </Button>
+        ) : null}
+
+        {onManageRemotes ? (
+          <Button
+            variant="icon"
+            className="btn-toolbar-action"
+            title="Manage remotes"
+            aria-label="Manage remotes"
+            data-tooltip="Manage Remotes"
+            data-tooltip-pos="bottom-right"
+            onClick={onManageRemotes}
+            disabled={isBusy}
+            data-testid="toolbar-manage-remotes-btn"
+          >
+            <Icon name="remote" />
           </Button>
         ) : null}
 

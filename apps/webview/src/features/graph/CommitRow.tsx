@@ -62,6 +62,15 @@ export interface CommitRowProps {
   onCheckoutRef?: (ref: RefBadgeItem) => void;
   onToggleDetail?: (sha: string) => void;
   onOpenDiffFirstFile?: (sha: string) => void;
+  draggableRefs?: boolean;
+  onRefDragStart?: (ref: RefBadgeItem, e: React.DragEvent<HTMLSpanElement>) => void;
+  onRefDragEnd?: (ref: RefBadgeItem, e: React.DragEvent<HTMLSpanElement>) => void;
+  onRefTouchStart?: (ref: RefBadgeItem, e: React.TouchEvent<HTMLSpanElement>) => void;
+  isDropTarget?: boolean;
+  onDragOverCommit?: (sha: string, e: React.DragEvent<HTMLTableRowElement>) => void;
+  onDragLeaveCommit?: (sha: string, e: React.DragEvent<HTMLTableRowElement>) => void;
+  onDropCommit?: (sha: string, e: React.DragEvent<HTMLTableRowElement>) => void;
+  worktreeBranches?: ReadonlyMap<string, string>;
 }
 
 export const CommitRow: React.FC<CommitRowProps> = React.memo(
@@ -93,6 +102,15 @@ export const CommitRow: React.FC<CommitRowProps> = React.memo(
     now,
     isMatched = false,
     isCurrentMatch = false,
+    draggableRefs = false,
+    onRefDragStart,
+    onRefDragEnd,
+    onRefTouchStart,
+    isDropTarget = false,
+    onDragOverCommit,
+    onDragLeaveCommit,
+    onDropCommit,
+    worktreeBranches,
   }) => {
     const rowStyle: React.CSSProperties = {
       height: rowHeight ? `${rowHeight}px` : undefined,
@@ -172,6 +190,30 @@ export const CommitRow: React.FC<CommitRowProps> = React.memo(
       [onContextMenu, commit],
     );
 
+    const handleDragOver = useCallback(
+      (e: React.DragEvent<HTMLTableRowElement>) => {
+        if (!onDragOverCommit) return;
+        onDragOverCommit(commit.hash, e);
+      },
+      [onDragOverCommit, commit.hash],
+    );
+
+    const handleDragLeave = useCallback(
+      (e: React.DragEvent<HTMLTableRowElement>) => {
+        if (!onDragLeaveCommit) return;
+        onDragLeaveCommit(commit.hash, e);
+      },
+      [onDragLeaveCommit, commit.hash],
+    );
+
+    const handleDrop = useCallback(
+      (e: React.DragEvent<HTMLTableRowElement>) => {
+        if (!onDropCommit) return;
+        onDropCommit(commit.hash, e);
+      },
+      [onDropCommit, commit.hash],
+    );
+
     const isHead =
       commit.isHead ?? commit.refs?.some((r) => r.type === 'head' || r.name === 'HEAD');
 
@@ -214,13 +256,18 @@ export const CommitRow: React.FC<CommitRowProps> = React.memo(
 
     return (
       <tr
-        className={`commit-row ${isSelected ? 'selected' : ''} ${isSecondarySelected ? 'secondary-selected' : ''} ${isMatched ? 'search-match' : ''} ${isCurrentMatch ? 'current-match' : ''} ${isUncommitted ? 'commit-row-uncommitted' : ''}`}
+        className={`commit-row ${isSelected ? 'selected' : ''} ${isSecondarySelected ? 'secondary-selected' : ''} ${isMatched ? 'search-match' : ''} ${isCurrentMatch ? 'current-match' : ''} ${isUncommitted ? 'commit-row-uncommitted' : ''} ${isDropTarget ? 'branch-drop-target' : ''}`}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         tabIndex={tabIndex ?? (isSelected ? 0 : -1)}
         onKeyDown={handleKeyDown}
         onContextMenu={handleContextMenu}
+        onDragOver={onDragOverCommit ? handleDragOver : undefined}
+        onDragLeave={onDragLeaveCommit ? handleDragLeave : undefined}
+        onDrop={onDropCommit ? handleDrop : undefined}
         data-testid={`commit-row-${commit.shortHash}`}
+        data-commit-sha={commit.hash}
+        data-drop-target={isDropTarget ? 'true' : undefined}
         style={rowStyle}
         role="row"
         aria-selected={isSelected}
@@ -266,6 +313,11 @@ export const CommitRow: React.FC<CommitRowProps> = React.memo(
             isUncommitted={isUncommitted}
             onCheckoutRef={onCheckoutRef}
             onContextMenuRef={handleContextMenuRef}
+            draggableRefs={draggableRefs}
+            onRefDragStart={onRefDragStart}
+            onRefDragEnd={onRefDragEnd}
+            onRefTouchStart={onRefTouchStart}
+            worktreeBranches={worktreeBranches}
           />
         </td>
 

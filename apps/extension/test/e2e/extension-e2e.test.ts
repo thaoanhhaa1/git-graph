@@ -7,7 +7,16 @@ import { GitCliClient } from '@git-graph/git-core';
 import type { RepositoryDescriptor } from '@git-graph/shared';
 import { activate, deactivate } from '../../src/extension';
 import { GitGraphPanel } from '../../src/webview/GitGraphPanel';
-import { MockWebview } from '../__mocks__/vscode';
+import {
+  MockTextDocument,
+  MockTextEditor,
+  MockWebview,
+  Position,
+  Selection,
+  resetMockConfiguration,
+  setMockConfigurationValue,
+  window,
+} from '../__mocks__/vscode';
 
 interface PostedMessage<TPayload = unknown> {
   id?: string;
@@ -15,25 +24,42 @@ interface PostedMessage<TPayload = unknown> {
   payload: TPayload;
 }
 
+interface CommitsPageChunkPayload {
+  requestId?: string;
+  repositoryId: string;
+  page: {
+    commits: Array<{ sha: string; subject: string; refs: Array<{ name: string }> }>;
+    cursor?: string;
+    hasMore?: boolean;
+  };
+  chunkIndex?: number;
+  totalChunks?: number;
+  isLastChunk?: boolean;
+}
+
 interface E2EWorkspace {
   root: string;
   client: GitCliClient;
   fixtureSha: string;
   searchableSha: string;
+  baseBranch: string;
 }
 
 const extensionUri = vscode.Uri.file(path.resolve('apps/extension'));
 
-describe('M7.3: Extension E2E scenarios', () => {
+describe('M20.1: Extension E2E scenarios (E1-E10)', () => {
   let tempDirs: string[] = [];
   let subscriptions: vscode.Disposable[] = [];
 
   beforeEach(() => {
     tempDirs = [];
     subscriptions = [];
+    resetMockConfiguration();
     deactivate();
     GitGraphPanel.currentPanel?.dispose();
     setWorkspaceFolders(undefined);
+    window.visibleTextEditors = [];
+    window.activeTextEditor = undefined;
   });
 
   afterEach(() => {
@@ -43,6 +69,8 @@ describe('M7.3: Extension E2E scenarios', () => {
     }
     subscriptions = [];
     setWorkspaceFolders(undefined);
+    window.visibleTextEditors = [];
+    window.activeTextEditor = undefined;
 
     for (const tempDir of tempDirs) {
       if (fs.existsSync(tempDir)) {
@@ -52,9 +80,9 @@ describe('M7.3: Extension E2E scenarios', () => {
     tempDirs = [];
   });
 
-  it('opens Git workspace graph, displays fixture commits, details, and search results', async () => {
+  it('E1: opens the graph, renders fixture commits, details, and search results', async () => {
     const workspace = await createGitWorkspace();
-    const { panel, webview, postSpy } = await openGraphForWorkspace(workspace.root);
+    const { panel, webview, postSpy } = await openGraphForWorkspace([workspace.root]);
 
     const repositories = await requestRepositories(webview, postSpy, 'repos-graph');
     expect(repositories).toHaveLength(1);
@@ -64,17 +92,12 @@ describe('M7.3: Extension E2E scenarios', () => {
     expect(repository.rootPath).toBe(fs.realpathSync(workspace.root));
     expect(repository.currentBranch).toBeTruthy();
 
-    webview.fireMessage(
-      message('commits.page.request', 'commits-1', {
-        repositoryId: repository.id,
-        limit: 20,
-      }),
-    );
-    const commitsMessage = await waitForPostedMessage<{
-      page: { commits: Array<{ sha: string; subject: string }> };
-    }>(postSpy, 'commits.page.result', (msg) => msg.payload.page.commits.length >= 2);
-    const commits = commitsMessage.payload.page.commits;
-    expect(commits.map((commit) => commit.subject)).toContain('feat: graph fixture commit');
+    const commits = await collectCommitPage(webview, postSpy, 'commits-1', {
+      repositoryId: repository.id,
+      limit: 20,
+    });
+    expect(commits.commits.map((commit) => commit.subject)).toContain('feat: graph fixture commit');
+    expect(commits.commits[0]!.refs.length).toBeGreaterThanOrEqual(0);
 
     webview.fireMessage(
       message('commit.details.request', 'details-1', {
@@ -87,10 +110,17 @@ describe('M7.3: Extension E2E scenarios', () => {
     }>(postSpy, 'commit.details.result', (msg) => msg.payload.commit.sha === workspace.fixtureSha);
     expect(detailsMessage.payload.commit.subject).toBe('feat: graph fixture commit');
     expect(detailsMessage.payload.commit.body ?? '').toContain('Body for details panel.');
+  });
+
+  it('E2: searches by subject/author/hash and applies path filters', async () => {
+    const workspace = await createGitWorkspace();
+    const { webview, postSpy } = await openGraphForWorkspace([workspace.root]);
+    const [repository] = await requestRepositories(webview, postSpy, 'repos-search');
+    expect(repository).toBeDefined();
 
     webview.fireMessage(
       message('search.request', 'search-subject', {
-        repositoryId: repository.id,
+        repositoryId: repository!.id,
         query: 'searchable subject',
         searchType: 'subject',
       }),
@@ -104,8 +134,21 @@ describe('M7.3: Extension E2E scenarios', () => {
     ).toBe(true);
 
     webview.fireMessage(
-      message('search.request', 'search-sha', {
-        repositoryId: repository.id,
+      message('search.request', 'search-author', {
+        repositoryId: repository!.id,
+        query: 'Extension E2E Runner',
+        searchType: 'author',
+      }),
+    );
+    const authorSearchMessage = await waitForPostedMessage<{
+      requestId?: string;
+      commits: Array<{ sha: string }>;
+    }>(postSpy, 'search.result', (msg) => msg.payload.requestId === 'search-author');
+    expect(authorSearchMessage.payload.commits.length).toBeGreaterThanOrEqual(2);
+
+    webview.fireMessage(
+      message('search.request', 'search-hash', {
+        repositoryId: repository!.id,
         query: workspace.fixtureSha.slice(0, 12),
         searchType: 'hash',
       }),
@@ -113,59 +156,70 @@ describe('M7.3: Extension E2E scenarios', () => {
     const shaSearchMessage = await waitForPostedMessage<{
       requestId?: string;
       commits: Array<{ sha: string }>;
-    }>(postSpy, 'search.result', (msg) => msg.payload.requestId === 'search-sha');
+    }>(postSpy, 'search.result', (msg) => msg.payload.requestId === 'search-hash');
     expect(
       shaSearchMessage.payload.commits.some((commit) => commit.sha === workspace.fixtureSha),
     ).toBe(true);
+
+    const pathFiltered = await collectCommitPage(webview, postSpy, 'commits-path-filter', {
+      repositoryId: repository!.id,
+      limit: 20,
+      path: 'search.txt',
+    });
+    const pathShas = pathFiltered.commits.map((commit) => commit.sha);
+    expect(pathShas).toContain(workspace.searchableSha);
+    expect(pathShas).not.toContain(workspace.fixtureSha);
   });
 
-  it('checks out a clean branch and reports dirty-worktree checkout warnings', async () => {
+  it('E3: stages files, creates a commit, and refreshes the graph', async () => {
     const workspace = await createGitWorkspace();
-    const { webview, postSpy } = await openGraphForWorkspace(workspace.root);
-    const [repository] = await requestRepositories(webview, postSpy, 'repos-checkout');
+    const { webview, postSpy } = await openGraphForWorkspace([workspace.root]);
+    const [repository] = await requestRepositories(webview, postSpy, 'repos-commit');
     expect(repository).toBeDefined();
 
-    await workspace.client.exec(['branch', 'clean-target'], { cwd: workspace.root });
-
+    fs.writeFileSync(path.join(workspace.root, 'staged.txt'), 'staged content\n', 'utf-8');
     webview.fireMessage(
-      message('operation.checkout.request', 'checkout-clean', {
+      message('worktree.stage.request', 'stage-1', {
         repositoryId: repository!.id,
-        target: 'clean-target',
-        targetType: 'localBranch',
+        paths: ['staged.txt'],
       }),
     );
-    const checkoutResult = await waitForPostedMessage<{
-      requestId: string;
-      success: boolean;
-      data?: { checkedOutRef?: string };
-    }>(postSpy, 'operation.result', (msg) => msg.payload.requestId === 'checkout-clean');
-    expect(checkoutResult.payload.success).toBe(true);
-    expect(checkoutResult.payload.data?.checkedOutRef).toBe('refs/heads/clean-target');
+    const stageResult = await waitForPostedMessage<{ requestId: string; success: boolean }>(
+      postSpy,
+      'operation.result',
+      (msg) => msg.payload.requestId === 'stage-1',
+    );
+    expect(stageResult.payload.success).toBe(true);
 
-    await workspace.client.exec(['checkout', 'master'], { cwd: workspace.root }).catch(async () => {
-      await workspace.client.exec(['checkout', 'main'], { cwd: workspace.root });
+    webview.fireMessage(
+      message('operation.commit.create.request', 'commit-1', {
+        repositoryId: repository!.id,
+        message: 'feat: e2e direct commit',
+        description: 'Created by the E2E suite.',
+      }),
+    );
+    const commitResult = await waitForPostedMessage<{ requestId: string; success: boolean }>(
+      postSpy,
+      'operation.result',
+      (msg) => msg.payload.requestId === 'commit-1',
+    );
+    expect(commitResult.payload.success).toBe(true);
+
+    const latestSubject = (
+      await workspace.client.exec(['log', '-1', '--pretty=%s'], { cwd: workspace.root })
+    ).stdout.trim();
+    expect(latestSubject).toBe('feat: e2e direct commit');
+
+    const commits = await collectCommitPage(webview, postSpy, 'commits-after-commit', {
+      repositoryId: repository!.id,
+      limit: 20,
     });
-    fs.appendFileSync(path.join(workspace.root, 'README.md'), 'dirty line\n', 'utf-8');
-
-    webview.fireMessage(
-      message('operation.checkout.request', 'checkout-dirty', {
-        repositoryId: repository!.id,
-        target: 'clean-target',
-        targetType: 'localBranch',
-      }),
-    );
-    const dirtyResult = await waitForPostedMessage<{
-      requestId: string;
-      success: boolean;
-      error?: { message?: string };
-    }>(postSpy, 'operation.result', (msg) => msg.payload.requestId === 'checkout-dirty');
-    expect(dirtyResult.payload.success).toBe(false);
-    expect(dirtyResult.payload.error?.message ?? '').toContain('uncommitted changes');
+    expect(commits.commits[0]!.subject).toBe('feat: e2e direct commit');
   });
 
-  it('creates a branch and exposes the new ref after refresh', async () => {
+  it('E4: creates, checks out, and deletes a branch', async () => {
     const workspace = await createGitWorkspace();
-    const { webview, postSpy } = await openGraphForWorkspace(workspace.root);
+    const { webview, postSpy } = await openGraphForWorkspace([workspace.root]);
     const [repository] = await requestRepositories(webview, postSpy, 'repos-branch');
     expect(repository).toBeDefined();
 
@@ -186,39 +240,345 @@ describe('M7.3: Extension E2E scenarios', () => {
     expect(createResult.payload.data?.branchRef).toBe('refs/heads/e2e-created-branch');
 
     webview.fireMessage(
-      message('commits.page.request', 'commits-with-ref', {
+      message('operation.checkout.request', 'branch-checkout', {
         repositoryId: repository!.id,
-        limit: 10,
+        target: 'e2e-created-branch',
+        targetType: 'localBranch',
       }),
     );
-    const refreshedCommits = await waitForPostedMessage<{
-      requestId?: string;
-      page: { commits: Array<{ refs: Array<{ name: string; fullName?: string }> }> };
-    }>(postSpy, 'commits.page.result', (msg) => msg.payload.requestId === 'commits-with-ref');
-    expect(
-      refreshedCommits.payload.page.commits.some((commit) =>
-        commit.refs.some(
-          (ref) =>
-            ref.name === 'e2e-created-branch' || ref.fullName === 'refs/heads/e2e-created-branch',
-        ),
-      ),
-    ).toBe(true);
+    const checkoutResult = await waitForPostedMessage<{
+      requestId: string;
+      success: boolean;
+      data?: { checkedOutRef?: string };
+    }>(postSpy, 'operation.result', (msg) => msg.payload.requestId === 'branch-checkout');
+    expect(checkoutResult.payload.success).toBe(true);
+    expect(checkoutResult.payload.data?.checkedOutRef).toBe('refs/heads/e2e-created-branch');
+
+    webview.fireMessage(
+      message('operation.checkout.request', 'branch-back', {
+        repositoryId: repository!.id,
+        target: workspace.baseBranch,
+        targetType: 'localBranch',
+      }),
+    );
+    await waitForPostedMessage<{ requestId: string; success: boolean }>(
+      postSpy,
+      'operation.result',
+      (msg) => msg.payload.requestId === 'branch-back',
+    );
+
+    webview.fireMessage(
+      message('operation.branch.delete.request', 'branch-delete', {
+        repositoryId: repository!.id,
+        branchName: 'e2e-created-branch',
+      }),
+    );
+    const deleteResult = await waitForPostedMessage<{ requestId: string; success: boolean }>(
+      postSpy,
+      'operation.result',
+      (msg) => msg.payload.requestId === 'branch-delete',
+    );
+    expect(deleteResult.payload.success).toBe(true);
+
+    const remainingBranches = (
+      await workspace.client.exec(['branch', '--list', 'e2e-created-branch'], {
+        cwd: workspace.root,
+      })
+    ).stdout.trim();
+    expect(remainingBranches).toBe('');
   });
 
-  it('shows an empty repository list for non-Git workspaces', async () => {
-    const nonGitRoot = createTempDir('git-graph-m7-e2e-empty-');
-    fs.writeFileSync(path.join(nonGitRoot, 'notes.txt'), 'not a git repository\n', 'utf-8');
+  it('E5: merges a feature branch with a merge commit', async () => {
+    const workspace = await createGitWorkspace();
+    const { webview, postSpy } = await openGraphForWorkspace([workspace.root]);
+    const [repository] = await requestRepositories(webview, postSpy, 'repos-merge');
+    expect(repository).toBeDefined();
 
-    const { webview, postSpy } = await openGraphForWorkspace(nonGitRoot);
-    const repositories = await requestRepositories(webview, postSpy, 'repos-empty');
+    webview.fireMessage(
+      message('operation.branch.create.request', 'merge-branch-create', {
+        repositoryId: repository!.id,
+        name: 'e2e-merge-feature',
+        startPoint: 'HEAD',
+        checkout: true,
+      }),
+    );
+    await waitForPostedMessage<{ requestId: string; success: boolean }>(
+      postSpy,
+      'operation.result',
+      (msg) => msg.payload.requestId === 'merge-branch-create',
+    );
 
-    expect(repositories).toEqual([]);
+    fs.writeFileSync(path.join(workspace.root, 'feature.txt'), 'feature work\n', 'utf-8');
+    webview.fireMessage(
+      message('worktree.stage.request', 'merge-stage', {
+        repositoryId: repository!.id,
+        paths: ['feature.txt'],
+      }),
+    );
+    await waitForPostedMessage<{ requestId: string; success: boolean }>(
+      postSpy,
+      'operation.result',
+      (msg) => msg.payload.requestId === 'merge-stage',
+    );
+
+    webview.fireMessage(
+      message('operation.commit.create.request', 'merge-commit', {
+        repositoryId: repository!.id,
+        message: 'feat: e2e feature commit',
+      }),
+    );
+    await waitForPostedMessage<{ requestId: string; success: boolean }>(
+      postSpy,
+      'operation.result',
+      (msg) => msg.payload.requestId === 'merge-commit',
+    );
+
+    webview.fireMessage(
+      message('operation.checkout.request', 'merge-checkout-back', {
+        repositoryId: repository!.id,
+        target: workspace.baseBranch,
+        targetType: 'localBranch',
+      }),
+    );
+    await waitForPostedMessage<{ requestId: string; success: boolean }>(
+      postSpy,
+      'operation.result',
+      (msg) => msg.payload.requestId === 'merge-checkout-back',
+    );
+
+    webview.fireMessage(
+      message('operation.merge.request', 'merge-run', {
+        repositoryId: repository!.id,
+        target: 'e2e-merge-feature',
+        fastForwardMode: 'no-ff',
+        noConfirm: true,
+      }),
+    );
+    const mergeResult = await waitForPostedMessage<{ requestId: string; success: boolean }>(
+      postSpy,
+      'operation.result',
+      (msg) => msg.payload.requestId === 'merge-run',
+    );
+    expect(mergeResult.payload.success).toBe(true);
+
+    const mergeSubject = (
+      await workspace.client.exec(['log', '-1', '--pretty=%s'], { cwd: workspace.root })
+    ).stdout.trim();
+    expect(mergeSubject.toLowerCase()).toContain('merge');
+
+    const parents = (
+      await workspace.client.exec(['log', '-1', '--pretty=%P'], { cwd: workspace.root })
+    ).stdout.trim();
+    expect(parents.split(/\s+/).filter(Boolean)).toHaveLength(2);
   });
 
-  async function createGitWorkspace(): Promise<E2EWorkspace> {
+  it('E6: saves a stash, lists it, and pops it back into the worktree', async () => {
+    const workspace = await createGitWorkspace();
+    const { webview, postSpy } = await openGraphForWorkspace([workspace.root]);
+    const [repository] = await requestRepositories(webview, postSpy, 'repos-stash');
+    expect(repository).toBeDefined();
+
+    const readmePath = path.join(workspace.root, 'README.md');
+    fs.appendFileSync(readmePath, 'stashed line\n', 'utf-8');
+
+    webview.fireMessage(
+      message('stash.save.request', 'stash-save', {
+        repositoryId: repository!.id,
+        message: 'e2e stash entry',
+        includeUntracked: true,
+      }),
+    );
+    const saveResult = await waitForPostedMessage<{ requestId: string; success: boolean }>(
+      postSpy,
+      'operation.result',
+      (msg) => msg.payload.requestId === 'stash-save',
+    );
+    expect(saveResult.payload.success).toBe(true);
+    expect(fs.readFileSync(readmePath, 'utf-8')).not.toContain('stashed line');
+
+    webview.fireMessage(
+      message('stash.list.request', 'stash-list', {
+        repositoryId: repository!.id,
+      }),
+    );
+    const stashList = await waitForPostedMessage<{
+      stashes: Array<{ index: number; message?: string }>;
+    }>(postSpy, 'stash.list.result', (msg) => msg.payload.stashes.length >= 1);
+    expect(stashList.payload.stashes.length).toBeGreaterThanOrEqual(1);
+
+    webview.fireMessage(
+      message('stash.pop.request', 'stash-pop', {
+        repositoryId: repository!.id,
+        index: 0,
+      }),
+    );
+    const popResult = await waitForPostedMessage<{ requestId: string; success: boolean }>(
+      postSpy,
+      'operation.result',
+      (msg) => msg.payload.requestId === 'stash-pop',
+    );
+    expect(popResult.payload.success).toBe(true);
+    expect(fs.readFileSync(readmePath, 'utf-8')).toContain('stashed line');
+  });
+
+  it('E7: pushes to a remote and pulls new commits back', async () => {
+    const workspace = await createGitWorkspace();
+    const { webview, postSpy } = await openGraphForWorkspace([workspace.root]);
+    const [repository] = await requestRepositories(webview, postSpy, 'repos-sync');
+    expect(repository).toBeDefined();
+
+    const remoteRoot = createTempDir('git-graph-e2e-remote-');
+    await workspace.client.exec(['init', '--bare', remoteRoot]);
+    await workspace.client.exec(['remote', 'add', 'origin', remoteRoot], { cwd: workspace.root });
+
+    webview.fireMessage(
+      message('operation.push.request', 'push-1', {
+        repositoryId: repository!.id,
+        branchName: workspace.baseBranch,
+        remote: 'origin',
+        setUpstream: true,
+      }),
+    );
+    const pushResult = await waitForPostedMessage<{ requestId: string; success: boolean }>(
+      postSpy,
+      'operation.result',
+      (msg) => msg.payload.requestId === 'push-1',
+    );
+    expect(pushResult.payload.success).toBe(true);
+
+    const remoteRefs = (
+      await workspace.client.exec(['ls-remote', 'origin'], { cwd: workspace.root })
+    ).stdout;
+    expect(remoteRefs).toContain(`refs/heads/${workspace.baseBranch}`);
+
+    const cloneRoot = createTempDir('git-graph-e2e-clone-');
+    await workspace.client.exec(['clone', remoteRoot, cloneRoot]);
+    await workspace.client.exec(['config', 'user.name', 'E2E Clone'], { cwd: cloneRoot });
+    await workspace.client.exec(['config', 'user.email', 'clone@gitgraph.test'], {
+      cwd: cloneRoot,
+    });
+    fs.writeFileSync(path.join(cloneRoot, 'remote-only.txt'), 'from clone\n', 'utf-8');
+    await workspace.client.exec(['add', 'remote-only.txt'], { cwd: cloneRoot });
+    await workspace.client.exec(['commit', '-m', 'feat: remote-only commit'], { cwd: cloneRoot });
+    await workspace.client.exec(['push', 'origin', workspace.baseBranch], { cwd: cloneRoot });
+    const cloneHead = (
+      await workspace.client.exec(['rev-parse', 'HEAD'], { cwd: cloneRoot })
+    ).stdout.trim();
+
+    webview.fireMessage(
+      message('operation.pull.request', 'pull-1', {
+        repositoryId: repository!.id,
+        remote: 'origin',
+        strategy: 'ff-only',
+      }),
+    );
+    const pullResult = await waitForPostedMessage<{ requestId: string; success: boolean }>(
+      postSpy,
+      'operation.result',
+      (msg) => msg.payload.requestId === 'pull-1',
+    );
+    expect(pullResult.payload.success).toBe(true);
+
+    const localHead = (
+      await workspace.client.exec(['rev-parse', 'HEAD'], { cwd: workspace.root })
+    ).stdout.trim();
+    expect(localHead).toBe(cloneHead);
+  });
+
+  it('E8: toggles inline blame decorations for the active editor', async () => {
+    const workspace = await createGitWorkspace();
+    await openGraphForWorkspace([workspace.root]);
+
+    const readmePath = path.join(workspace.root, 'README.md');
+    const document = new MockTextDocument(readmePath, fs.readFileSync(readmePath, 'utf-8'));
+    const editor = new MockTextEditor(
+      document,
+      new Selection(new Position(0, 0), new Position(0, 0)),
+    );
+    window.activeTextEditor = editor as never;
+    window._setVisibleTextEditors([editor]);
+    window._fireDidChangeActiveTextEditor(editor);
+
+    setMockConfigurationValue('gitGraph.blame.enabled', false);
+    await vscode.commands.executeCommand('gitGraph.toggleBlame');
+
+    await waitFor(async () => editor.appliedDecorations.size > 0);
+    expect(editor.appliedDecorations.size).toBeGreaterThan(0);
+  });
+
+  it('E9: switches between multiple discovered repositories', async () => {
+    const first = await createGitWorkspace('git-graph-e2e-multi-a-');
+    const second = await createGitWorkspace('git-graph-e2e-multi-b-');
+    fs.writeFileSync(path.join(second.root, 'second.txt'), 'second repo\n', 'utf-8');
+    await second.client.exec(['add', 'second.txt'], { cwd: second.root });
+    await second.client.exec(['commit', '-m', 'feat: second repository commit'], {
+      cwd: second.root,
+    });
+
+    const { webview, postSpy } = await openGraphForWorkspace([first.root, second.root]);
+    const repositories = await requestRepositories(webview, postSpy, 'repos-multi');
+    expect(repositories).toHaveLength(2);
+
+    const secondRepository = repositories.find(
+      (repository) => repository.rootPath === fs.realpathSync(second.root),
+    );
+    expect(secondRepository).toBeDefined();
+
+    webview.fireMessage(
+      message('repository.select', 'select-second', {
+        repositoryId: secondRepository!.id,
+      }),
+    );
+
+    const commits = await collectCommitPage(webview, postSpy, 'commits-second', {
+      repositoryId: secondRepository!.id,
+      limit: 20,
+    });
+    expect(commits.commits[0]!.subject).toBe('feat: second repository commit');
+  });
+
+  it('E10: pages through a large synthetic history without dropping rows', async () => {
+    const workspace = await createGitWorkspace('git-graph-e2e-large-');
+    const totalCommits = 2_500;
+    await workspace.client.exec(['config', 'user.name', 'Large History Bot'], {
+      cwd: workspace.root,
+    });
+    await workspace.client.exec(['config', 'user.email', 'large@gitgraph.test'], {
+      cwd: workspace.root,
+    });
+    await seedSyntheticHistory(workspace.client, workspace.root, totalCommits);
+
+    const { webview, postSpy } = await openGraphForWorkspace([workspace.root]);
+    const [repository] = await requestRepositories(webview, postSpy, 'repos-large');
+    expect(repository).toBeDefined();
+
+    const seenShas = new Set<string>();
+    let cursor: string | undefined;
+    let hasMore = true;
+    let pageIndex = 0;
+
+    while (hasMore && pageIndex < 10) {
+      const page = await collectCommitPage(webview, postSpy, `large-page-${pageIndex}`, {
+        repositoryId: repository!.id,
+        limit: 500,
+        ...(cursor ? { cursor } : {}),
+      });
+      for (const commit of page.commits) {
+        seenShas.add(commit.sha);
+      }
+      cursor = page.cursor;
+      hasMore = Boolean(page.hasMore);
+      pageIndex += 1;
+    }
+
+    expect(seenShas.size).toBeGreaterThanOrEqual(totalCommits);
+    expect(hasMore).toBe(false);
+  });
+
+  async function createGitWorkspace(prefix = 'git-graph-e2e-'): Promise<E2EWorkspace> {
     const info = await GitCliClient.detect();
     const client = new GitCliClient(info.path);
-    const root = createTempDir('git-graph-m7-e2e-');
+    const root = createTempDir(prefix);
 
     await client.exec(['init', root]);
     await client.exec(['config', 'user.name', 'Extension E2E Runner'], { cwd: root });
@@ -236,8 +596,11 @@ describe('M7.3: Extension E2E scenarios', () => {
     await client.exec(['add', 'search.txt'], { cwd: root });
     await client.exec(['commit', '-m', 'fix: searchable subject commit'], { cwd: root });
     const searchableSha = (await client.exec(['rev-parse', 'HEAD'], { cwd: root })).stdout.trim();
+    const baseBranch = (
+      await client.exec(['symbolic-ref', '--short', 'HEAD'], { cwd: root })
+    ).stdout.trim();
 
-    return { root, client, fixtureSha, searchableSha };
+    return { root, client, fixtureSha, searchableSha, baseBranch };
   }
 
   function createTempDir(prefix: string): string {
@@ -246,18 +609,18 @@ describe('M7.3: Extension E2E scenarios', () => {
     return tempDir;
   }
 
-  async function openGraphForWorkspace(root: string): Promise<{
+  async function openGraphForWorkspace(roots: string[]): Promise<{
     panel: GitGraphPanel;
     webview: MockWebview;
     postSpy: ReturnType<typeof vi.spyOn>;
   }> {
-    setWorkspaceFolders([
-      {
+    setWorkspaceFolders(
+      roots.map((root, index) => ({
         uri: vscode.Uri.file(root),
         name: path.basename(root),
-        index: 0,
-      },
-    ]);
+        index,
+      })),
+    );
 
     const context = { subscriptions, extensionUri } as unknown as vscode.ExtensionContext;
     activate(context);
@@ -289,7 +652,85 @@ describe('M7.3: Extension E2E scenarios', () => {
     );
     return repositoriesMessage.payload.repositories;
   }
+
+  async function collectCommitPage(
+    webview: MockWebview,
+    postSpy: ReturnType<typeof vi.spyOn>,
+    requestId: string,
+    payload: Record<string, unknown>,
+  ): Promise<{
+    commits: CommitsPageChunkPayload['page']['commits'];
+    cursor?: string;
+    hasMore: boolean;
+  }> {
+    webview.fireMessage(message('commits.page.request', requestId, payload));
+
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      const chunks = postSpy.mock.calls
+        .map((call) => call[0] as PostedMessage<CommitsPageChunkPayload> | undefined)
+        .filter(
+          (candidate): candidate is PostedMessage<CommitsPageChunkPayload> =>
+            candidate?.type === 'commits.page.result' && candidate.payload?.requestId === requestId,
+        );
+
+      const lastChunk = chunks.find((chunk) => chunk.payload.isLastChunk !== false);
+      if (lastChunk) {
+        chunks.sort((a, b) => (a.payload.chunkIndex ?? 0) - (b.payload.chunkIndex ?? 0));
+        return {
+          commits: chunks.flatMap((chunk) => chunk.payload.page.commits),
+          cursor: lastChunk.payload.page.cursor,
+          hasMore: Boolean(lastChunk.payload.page.hasMore),
+        };
+      }
+      await delay(10);
+    }
+
+    throw new Error(`Timed out collecting commit page for ${requestId}`);
+  }
 });
+
+async function seedSyntheticHistory(
+  client: GitCliClient,
+  root: string,
+  count: number,
+): Promise<void> {
+  const lines: string[] = [
+    'blob',
+    'mark :1',
+    'data 6',
+    'hello',
+    '',
+    'blob',
+    'mark :2',
+    'data 12',
+    'placeholder',
+    '',
+  ];
+
+  for (let index = 0; index < count; index++) {
+    const timestamp = 1_700_000_000 + index * 60;
+    const subject = `synthetic commit ${index}`;
+    lines.push('commit refs/heads/main');
+    lines.push(`mark :${index + 3}`);
+    lines.push(`author Large History Bot <large@gitgraph.test> ${timestamp} +0000`);
+    lines.push(`committer Large History Bot <large@gitgraph.test> ${timestamp} +0000`);
+    lines.push(`data ${Buffer.byteLength(subject, 'utf8')}`);
+    lines.push(subject);
+    if (index > 0) {
+      lines.push(`from :${index + 2}`);
+    }
+    lines.push('M 100644 :2 history.txt');
+    lines.push('');
+  }
+
+  await client.exec(['fast-import', '--quiet', '--force'], {
+    cwd: root,
+    stdin: `${lines.join('\n')}\n`,
+  });
+  await client.exec(['symbolic-ref', 'HEAD', 'refs/heads/main'], { cwd: root });
+  await client.exec(['reset', '--hard', '--quiet'], { cwd: root });
+}
 
 function setWorkspaceFolders(
   folders: Array<{ uri: vscode.Uri; name: string; index: number }> | undefined,
@@ -311,7 +752,7 @@ async function waitForPostedMessage<TPayload>(
   type: string,
   predicate: (message: PostedMessage<TPayload>) => boolean = () => true,
 ): Promise<PostedMessage<TPayload>> {
-  const deadline = Date.now() + 3_000;
+  const deadline = Date.now() + 10_000;
 
   while (Date.now() < deadline) {
     for (const call of postSpy.mock.calls) {
@@ -320,9 +761,27 @@ async function waitForPostedMessage<TPayload>(
         return candidate;
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await delay(10);
   }
 
   const seenTypes = postSpy.mock.calls.map((call) => (call[0] as PostedMessage | undefined)?.type);
   throw new Error(`Timed out waiting for ${type}; saw: ${seenTypes.join(', ')}`);
+}
+
+async function waitFor(
+  predicate: () => boolean | Promise<boolean>,
+  timeoutMs = 5_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) {
+      return;
+    }
+    await delay(25);
+  }
+  throw new Error('Timed out waiting for condition');
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -13,6 +13,30 @@ export interface ParsedNameStatusEntry {
   oldPath?: string;
   status: FileChangeStatus;
   similarity?: number;
+  isSubmodule?: boolean;
+}
+
+const GIT_SUBMODULE_MODE = '160000';
+
+function mapStatusCode(statusCode: string | undefined): FileChangeStatus {
+  switch (statusCode) {
+    case 'A':
+      return 'added';
+    case 'M':
+      return 'modified';
+    case 'D':
+      return 'deleted';
+    case 'R':
+      return 'renamed';
+    case 'C':
+      return 'copied';
+    case 'T':
+      return 'typeChanged';
+    case 'U':
+      return 'unmerged';
+    default:
+      return 'unknown';
+  }
 }
 
 /**
@@ -216,6 +240,70 @@ export class DiffStatParser {
   }
 
   /**
+   * Parses git `diff --raw` output, detecting submodule (mode 160000) changes.
+   *
+   * Format per line:
+   * `:oldmode newmode oldsha newsha status\tpath`
+   * Renames/copies append the old path: `... R100\toldPath\tnewPath`.
+   */
+  public static parseRawDiff(output: string): ParsedNameStatusEntry[] {
+    if (!output || !output.trim()) {
+      return [];
+    }
+
+    const entries: ParsedNameStatusEntry[] = [];
+
+    for (const rawLine of output.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line.startsWith(':')) {
+        continue;
+      }
+
+      const tabIndex = line.indexOf('\t');
+      if (tabIndex === -1) {
+        continue;
+      }
+
+      const header = line.slice(0, tabIndex);
+      const pathParts = line.slice(tabIndex + 1).split('\t');
+      const headerMatch = /^:(\d{6})\s+(\d{6})\s+[0-9a-fA-F]+\s+[0-9a-fA-F]+\s+([A-Z])(\d*)$/.exec(
+        header,
+      );
+      if (!headerMatch) {
+        continue;
+      }
+
+      const [, oldMode, newMode, statusCode, similarityRaw] = headerMatch;
+      const isSubmodule = oldMode === GIT_SUBMODULE_MODE || newMode === GIT_SUBMODULE_MODE;
+      const status = mapStatusCode(statusCode);
+      const similarity = similarityRaw ? Number.parseInt(similarityRaw, 10) : undefined;
+
+      let path: string | undefined;
+      let oldPath: string | undefined;
+      if (status === 'renamed' || status === 'copied') {
+        oldPath = DiffStatParser.unquotePath(pathParts[0] ?? '');
+        path = DiffStatParser.unquotePath(pathParts[1] ?? pathParts[0] ?? '');
+      } else {
+        path = DiffStatParser.unquotePath(pathParts[0] ?? '');
+      }
+
+      if (!path) {
+        continue;
+      }
+
+      entries.push({
+        path,
+        ...(oldPath ? { oldPath } : {}),
+        status,
+        ...(similarity !== undefined && !Number.isNaN(similarity) ? { similarity } : {}),
+        ...(isSubmodule ? { isSubmodule: true } : {}),
+      });
+    }
+
+    return entries;
+  }
+
+  /**
    * Combines parsed numstat entries with name-status entries to build complete FileChange objects.
    */
   public static combine(
@@ -250,6 +338,7 @@ export class DiffStatParser {
         additions: num.additions,
         deletions: num.deletions,
         isBinary: num.isBinary,
+        ...(ns?.isSubmodule ? { isSubmodule: true } : {}),
         similarity: ns?.similarity,
       });
     }
@@ -264,6 +353,7 @@ export class DiffStatParser {
           additions: 0,
           deletions: 0,
           isBinary: false,
+          ...(ns.isSubmodule ? { isSubmodule: true } : {}),
           similarity: ns.similarity,
         });
       }

@@ -4,6 +4,8 @@ import { loadPersistedState, savePersistedState } from './persistence';
 
 export type DateType = 'default' | 'relative' | 'absolute';
 
+export const DEFAULT_BLAME_FORMAT = '${author}, ${relativeDate} • ${subject}';
+
 export interface ViewConfig {
   showAuthor: boolean;
   showDate: boolean;
@@ -14,10 +16,16 @@ export interface ViewConfig {
   pageSize: number;
   commitOrdering: CommitOrdering;
   compactMode: boolean;
+  showMinimap: boolean;
+  showStatusBarItem: boolean;
+  blameEnabled: boolean;
+  blameFormat: string;
 }
 
 export interface ConfigStoreState {
   config: ViewConfig;
+  /** Incremented whenever persisted column widths should be discarded. */
+  columnWidthsResetToken: number;
 }
 
 export interface ConfigStoreActions {
@@ -29,8 +37,13 @@ export interface ConfigStoreActions {
   setPageSize: (pageSize: number) => void;
   setCommitOrdering: (order: CommitOrdering) => void;
   setCompactMode: (compact: boolean) => void;
+  setShowMinimap: (show: boolean) => void;
+  setShowStatusBarItem: (show: boolean) => void;
+  setBlameEnabled: (enabled: boolean) => void;
+  setBlameFormat: (format: string) => void;
   updateConfig: (partial: Partial<ViewConfig>) => void;
   resetConfig: () => void;
+  resetColumnWidths: () => void;
 }
 
 export type ConfigStore = ConfigStoreState & ConfigStoreActions;
@@ -44,6 +57,10 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   pageSize: DEFAULT_PAGE_SIZE,
   commitOrdering: 'date-order',
   compactMode: false,
+  showMinimap: true,
+  showStatusBarItem: true,
+  blameEnabled: false,
+  blameFormat: DEFAULT_BLAME_FORMAT,
 };
 
 const initialPersisted = loadPersistedState()?.viewConfig;
@@ -58,6 +75,7 @@ export const useConfigStore = create<ConfigStore>((set) => ({
         : 'default',
     ...(initialPersisted?.pageSize ? { pageSize: clampPageSize(initialPersisted.pageSize) } : {}),
   },
+  columnWidthsResetToken: 0,
 
   setShowAuthor: (show: boolean) => {
     set((state) => {
@@ -123,6 +141,38 @@ export const useConfigStore = create<ConfigStore>((set) => ({
     });
   },
 
+  setShowMinimap: (show: boolean) => {
+    set((state) => {
+      const nextConfig = { ...state.config, showMinimap: show };
+      savePersistedState({ viewConfig: nextConfig });
+      return { config: nextConfig };
+    });
+  },
+
+  setShowStatusBarItem: (show: boolean) => {
+    set((state) => {
+      const nextConfig = { ...state.config, showStatusBarItem: show };
+      savePersistedState({ viewConfig: nextConfig });
+      return { config: nextConfig };
+    });
+  },
+
+  setBlameEnabled: (enabled: boolean) => {
+    set((state) => {
+      const nextConfig = { ...state.config, blameEnabled: enabled };
+      savePersistedState({ viewConfig: nextConfig });
+      return { config: nextConfig };
+    });
+  },
+
+  setBlameFormat: (format: string) => {
+    set((state) => {
+      const nextConfig = { ...state.config, blameFormat: format };
+      savePersistedState({ viewConfig: nextConfig });
+      return { config: nextConfig };
+    });
+  },
+
   updateConfig: (partial: Partial<ViewConfig>) => {
     set((state) => {
       const nextConfig = {
@@ -139,6 +189,13 @@ export const useConfigStore = create<ConfigStore>((set) => ({
     set(() => {
       savePersistedState({ viewConfig: DEFAULT_VIEW_CONFIG });
       return { config: { ...DEFAULT_VIEW_CONFIG } };
+    });
+  },
+
+  resetColumnWidths: () => {
+    set((state) => {
+      savePersistedState({ columnWidths: undefined });
+      return { columnWidthsResetToken: state.columnWidthsResetToken + 1 };
     });
   },
 }));

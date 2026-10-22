@@ -1,6 +1,6 @@
 {
   "name": "git-graph-monorepo",
-  "version": "0.2.1",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Git Graph VS Code Extension monorepo",
@@ -32,15 +32,19 @@
     "test:unit": "vitest run",
     "test:integration": "vitest run --dir test/integration",
     "test:e2e": "npm run --workspace=apps/extension --if-present test:e2e",
+    "test:e2e:host": "npm run build && node scripts/e2e/run-vscode-e2e.mjs",
     "package": "npm run build && npm run prepare:vsix && npm run --workspace=apps/extension package",
     "prepare:vsix": "node scripts/prepare-vsix.mjs",
     "republish": "npm run build && npm run typecheck && npm run lint && npm run format:fix && npm run test",
     "benchmark": "npm run build && node scripts/benchmark.mjs",
-    "benchmark:quick": "npm run build && node scripts/benchmark.mjs --quick --repeat=1 --output=docs/benchmark-report.quick.json"
+    "benchmark:quick": "npm run build && node scripts/benchmark.mjs --quick --repeat=1 --output=docs/benchmark-report.quick.json --markdown=docs/benchmark-report.quick.md",
+    "benchmark:500k": "npm run build && node scripts/benchmark.mjs --sizes=1000,10000,100000,500000 --repeat=1 --output=docs/benchmark-report.json --markdown=docs/benchmark-report.md",
+    "benchmark:baseline": "npm run build && node scripts/benchmark.mjs --sizes=1000,10000,100000,500000 --repeat=1 --save-baseline --output=docs/benchmark-report.baseline.json"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
     "@types/node": "^20.14.0",
+    "@vscode/test-electron": "^3.1.0",
     "eslint": "^9.9.0",
     "prettier": "^3.3.3",
     "typescript": "^5.5.4",

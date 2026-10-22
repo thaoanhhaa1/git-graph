@@ -1,0 +1,8 @@
+{
+  "Creating worktree...": "正在创建工作树...",
+  "Removing worktree...": "正在删除工作树...",
+  "Force removing worktree...": "正在强制删除工作树...",
+  "Failed to list worktrees: {0}": "无法列出工作树：{0}",
+  "Failed to list submodules: {0}": "无法列出子模块：{0}",
+  "Worktree path is required.": "必须填写工作树路径。"
+}

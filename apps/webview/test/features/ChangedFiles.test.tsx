@@ -285,4 +285,171 @@ describe('ChangedFiles Component', () => {
       root.unmount();
     });
   });
+
+  it('renders hover action buttons for each changed file in tree mode and handles clicks', async () => {
+    const onOpenDiffInVsCode = vi.fn();
+    const onViewFileAtRevision = vi.fn();
+    const onViewFileHistory = vi.fn();
+    const onOpenFileInEditor = vi.fn();
+
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <ChangedFiles
+          commitSha="abc1234"
+          fileChanges={sampleChanges}
+          selectedFilePath={null}
+          viewMode="tree"
+          onSelectFile={vi.fn()}
+          onOpenDiffInVsCode={onOpenDiffInVsCode}
+          onViewFileAtRevision={onViewFileAtRevision}
+          onViewFileHistory={onViewFileHistory}
+          onOpenFileInEditor={onOpenFileInEditor}
+        />,
+      );
+    });
+
+    const diffBtn = container.querySelector(
+      '[data-testid="file-action-view-diff-src/main.ts"]',
+    ) as HTMLElement;
+    const viewFileBtn = container.querySelector(
+      '[data-testid="file-action-view-file-src/main.ts"]',
+    ) as HTMLElement;
+    const viewHistoryBtn = container.querySelector(
+      '[data-testid="file-action-view-history-src/main.ts"]',
+    ) as HTMLElement;
+    const openEditorBtn = container.querySelector(
+      '[data-testid="file-action-open-editor-src/main.ts"]',
+    ) as HTMLElement;
+
+    expect(diffBtn).toBeTruthy();
+    expect(viewFileBtn).toBeTruthy();
+    expect(viewHistoryBtn).toBeTruthy();
+    expect(openEditorBtn).toBeTruthy();
+
+    await act(async () => {
+      diffBtn.click();
+    });
+    expect(onOpenDiffInVsCode).toHaveBeenCalledWith('src/main.ts', undefined);
+
+    await act(async () => {
+      viewFileBtn.click();
+    });
+    expect(onViewFileAtRevision).toHaveBeenCalledWith('src/main.ts', 'abc1234');
+
+    await act(async () => {
+      viewHistoryBtn.click();
+    });
+    expect(onViewFileHistory).toHaveBeenCalledWith('src/main.ts');
+
+    await act(async () => {
+      openEditorBtn.click();
+    });
+    expect(onOpenFileInEditor).toHaveBeenCalledWith('src/main.ts');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('renders hover action buttons in list mode and passes oldPath when viewing diff for renamed file', async () => {
+    const onOpenDiffInVsCode = vi.fn();
+
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <ChangedFiles
+          commitSha="def5678"
+          fileChanges={sampleChanges}
+          selectedFilePath={null}
+          viewMode="list"
+          onSelectFile={vi.fn()}
+          onOpenDiffInVsCode={onOpenDiffInVsCode}
+        />,
+      );
+    });
+
+    const diffBtn = container.querySelector(
+      '[data-testid="file-action-view-diff-src/new-name.ts"]',
+    ) as HTMLElement;
+    expect(diffBtn).toBeTruthy();
+
+    await act(async () => {
+      diffBtn.click();
+    });
+    expect(onOpenDiffInVsCode).toHaveBeenCalledWith('src/new-name.ts', 'src/old-name.ts');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('triggers onViewFileAtRevision and onViewFileHistory from context menu', async () => {
+    const onViewFileAtRevision = vi.fn();
+    const onViewFileHistory = vi.fn();
+
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <ChangedFiles
+          commitSha="commit789"
+          fileChanges={sampleChanges}
+          selectedFilePath={null}
+          viewMode="list"
+          onSelectFile={vi.fn()}
+          onViewFileAtRevision={onViewFileAtRevision}
+          onViewFileHistory={onViewFileHistory}
+        />,
+      );
+    });
+
+    const mainFileItem = container.querySelector(
+      '[data-testid="changed-file-src/main.ts"]',
+    ) as HTMLElement;
+
+    await act(async () => {
+      mainFileItem.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 100,
+          clientY: 100,
+        }),
+      );
+    });
+
+    const viewRevisionItem = container.querySelector(
+      '[data-testid="action-menu-item-view-file-at-revision"]',
+    ) as HTMLElement;
+    expect(viewRevisionItem).toBeTruthy();
+    await act(async () => {
+      viewRevisionItem.click();
+    });
+    expect(onViewFileAtRevision).toHaveBeenCalledWith('src/main.ts', 'commit789');
+
+    // Open context menu again
+    await act(async () => {
+      mainFileItem.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 100,
+          clientY: 100,
+        }),
+      );
+    });
+
+    const viewHistoryItem = container.querySelector(
+      '[data-testid="action-menu-item-view-file-history"]',
+    ) as HTMLElement;
+    expect(viewHistoryItem).toBeTruthy();
+    await act(async () => {
+      viewHistoryItem.click();
+    });
+    expect(onViewFileHistory).toHaveBeenCalledWith('src/main.ts');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
 });

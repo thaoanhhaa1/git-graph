@@ -47,6 +47,7 @@ export interface CommitContextMenuProps {
     options?: { exclusive?: boolean; targetBranch?: string },
   ) => void;
   onRebase?: (target: string) => void;
+  onInteractiveRebase?: (commitSha: string) => void;
   onReset?: (target: string, mode: OperationResetMode) => void;
   onSelectForCompare?: (commitSha: string) => void;
   onPinCommit?: (commitSha: string) => void;
@@ -134,6 +135,7 @@ export const CommitContextMenu: React.FC<CommitContextMenuProps> = ({
   onDropCommit,
   onMerge,
   onRebase,
+  onInteractiveRebase,
   onReset,
   onSelectForCompare,
   onPinCommit,
@@ -460,7 +462,7 @@ export const CommitContextMenu: React.FC<CommitContextMenuProps> = ({
 
     entries.push({
       id: 'create-fixup',
-      label: 'Create Fixup Commit',
+      label: 'Fixup into Previous',
       action: () => {
         onFixup?.(commitSha);
         onClose();
@@ -557,6 +559,15 @@ export const CommitContextMenu: React.FC<CommitContextMenuProps> = ({
       label: 'Rebase current branch on this Commit...',
       action: () => {
         onRebase?.(commitSha);
+        onClose();
+      },
+    });
+
+    entries.push({
+      id: 'interactive-rebase-commit',
+      label: 'Interactive Rebase from Here...',
+      action: () => {
+        onInteractiveRebase?.(commitSha);
         onClose();
       },
     });
@@ -692,6 +703,7 @@ export const CommitContextMenu: React.FC<CommitContextMenuProps> = ({
     onDropCommit,
     onMerge,
     onRebase,
+    onInteractiveRebase,
     onReset,
     onSelectForCompare,
     onPinCommit,

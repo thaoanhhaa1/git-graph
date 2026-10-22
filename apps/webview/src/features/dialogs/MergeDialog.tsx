@@ -3,11 +3,16 @@ import { Modal, ModalActions, ModalField, ModalTitle } from '../../components/ui
 import { CheckboxField } from '../../components/ui/Checkbox';
 import { RadioGroup } from '../../components/ui/RadioGroup';
 import type { OperationMergeFastForwardMode } from '@git-graph/shared';
+import {
+  getLastMergeFastForwardMode,
+  saveLastMergeFastForwardMode,
+} from '../../stores/persistence';
 
 export interface MergeDialogProps {
   target: string;
   currentBranch?: string;
   isOpen: boolean;
+  initialFastForwardMode?: OperationMergeFastForwardMode;
   onClose: () => void;
   onMerge: (
     target: string,
@@ -21,26 +26,30 @@ export const MergeDialog: React.FC<MergeDialogProps> = ({
   target,
   currentBranch,
   isOpen,
+  initialFastForwardMode,
   onClose,
   onMerge,
 }) => {
-  const [fastForwardMode, setFastForwardMode] = useState<OperationMergeFastForwardMode>('ff');
+  const [fastForwardMode, setFastForwardMode] = useState<OperationMergeFastForwardMode>(
+    () => initialFastForwardMode ?? getLastMergeFastForwardMode() ?? 'ff',
+  );
   const [squash, setSquash] = useState(false);
   const [noCommit, setNoCommit] = useState(false);
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setFastForwardMode('ff');
+      setFastForwardMode(initialFastForwardMode ?? getLastMergeFastForwardMode() ?? 'ff');
       setSquash(false);
       setNoCommit(false);
       setTimeout(() => {
         confirmBtnRef.current?.focus();
       }, 50);
     }
-  }, [isOpen, target]);
+  }, [isOpen, target, initialFastForwardMode]);
 
   const handleConfirm = () => {
+    saveLastMergeFastForwardMode(fastForwardMode);
     onMerge(target, fastForwardMode, squash, squash ? false : noCommit);
     onClose();
   };

@@ -9,7 +9,11 @@ import { GitGraphView } from '../../src/features/graph/GitGraphView';
 import { useRepositoryStore } from '../../src/stores/repositoryStore';
 import { useGraphStore } from '../../src/stores/graphStore';
 import { useSelectionStore } from '../../src/stores/selectionStore';
+import { useOperationStore } from '../../src/stores/operationStore';
+import { useRemoteStore } from '../../src/stores/remoteStore';
+import { useUiStore } from '../../src/stores/uiStore';
 import { setVsCodeApi, resetVsCodeApi, createMockVsCodeApi } from '../../src/messaging/vscodeApi';
+import { handleIncomingMessage } from '../../src/messaging/messageRouter';
 import type { Commit, GitRef, MessageEnvelope } from '@git-graph/shared';
 
 describe('GitGraphView', () => {
@@ -27,6 +31,9 @@ describe('GitGraphView', () => {
     useRepositoryStore.getState().reset();
     useGraphStore.getState().reset();
     useSelectionStore.getState().reset();
+    useOperationStore.getState().reset();
+    useRemoteStore.getState().reset();
+    useUiStore.getState().clearRequestedDialog();
     container = document.createElement('div');
     document.body.appendChild(container);
   });
@@ -38,6 +45,9 @@ describe('GitGraphView', () => {
     useRepositoryStore.getState().reset();
     useGraphStore.getState().reset();
     useSelectionStore.getState().reset();
+    useOperationStore.getState().reset();
+    useRemoteStore.getState().reset();
+    useUiStore.getState().clearRequestedDialog();
     resetVsCodeApi();
     vi.restoreAllMocks();
   });
@@ -316,6 +326,9 @@ describe('GitGraphView dialogs', () => {
     useRepositoryStore.getState().reset();
     useGraphStore.getState().reset();
     useSelectionStore.getState().reset();
+    useOperationStore.getState().reset();
+    useRemoteStore.getState().reset();
+    useUiStore.getState().clearRequestedDialog();
     resetVsCodeApi();
     vi.restoreAllMocks();
   });
@@ -413,6 +426,15 @@ describe('GitGraphView dialogs', () => {
       fastForwardMode: 'ff-only',
       noConfirm: true,
     });
+
+    // Reopen merge dialog to verify remembered mode
+    await openCommitMenu();
+    await clickMenuItem('merge-commit');
+
+    const reopenedFfOnly = container.querySelector(
+      '[data-testid="merge-dialog-ff-only"]',
+    ) as HTMLInputElement;
+    expect(reopenedFfOnly.checked).toBe(true);
 
     await act(async () => root.unmount());
   });
@@ -737,5 +759,356 @@ describe('GitGraphView dialogs', () => {
     await act(async () => {
       root.unmount();
     });
+  });
+
+  it('automatically fetches all from remote when fetch button is clicked without opening dialog', async () => {
+    useRepositoryStore
+      .getState()
+      .setRepositories([{ id: 'repo-1', name: 'Repo One', path: '/path/one' }]);
+    useRemoteStore.getState().receiveRemotes('repo-1', [
+      {
+        name: 'origin',
+        fetchUrl: 'https://example.com/repo.git',
+        pushUrl: 'https://example.com/repo.git',
+      },
+    ]);
+    const root = createRoot(container);
+    await act(async () => root.render(<GitGraphView />));
+
+    await act(async () => {
+      (container.querySelector('[data-testid="toolbar-fetch-btn"]') as HTMLButtonElement).click();
+    });
+
+    expect(container.querySelector('[data-testid="fetch-dialog"]')).toBeNull();
+
+    const message = postedMessages.find((item) => item.type === 'operation.fetch.request');
+    expect(message?.payload).toMatchObject({
+      repositoryId: 'repo-1',
+      prune: true,
+      all: true,
+    });
+
+    await act(async () => root.unmount());
+  });
+
+  it('opens the push dialog with sync status and submits push options', async () => {
+    useRepositoryStore
+      .getState()
+      .setRepositories([
+        { id: 'repo-1', name: 'Repo One', path: '/path/one', currentBranch: 'main' },
+      ]);
+    useRepositoryStore.getState().setSyncStatus({
+      repositoryId: 'repo-1',
+      currentBranch: 'main',
+      upstream: 'origin/main',
+      ahead: 2,
+      behind: 1,
+    });
+    useRemoteStore.getState().receiveRemotes('repo-1', [
+      {
+        name: 'origin',
+        fetchUrl: 'https://example.com/repo.git',
+        pushUrl: 'https://example.com/repo.git',
+      },
+    ]);
+    const root = createRoot(container);
+    await act(async () => root.render(<GitGraphView />));
+
+    await act(async () => {
+      (container.querySelector('[data-testid="toolbar-push-btn"]') as HTMLButtonElement).click();
+    });
+
+    expect(container.querySelector('[data-testid="push-dialog"]')).toBeTruthy();
+    expect(
+      container.querySelector('[data-testid="push-dialog-sync-status"]')?.textContent,
+    ).toContain('↑ 2 ahead');
+    expect(postedMessages.some((message) => message.type === 'repository.syncStatus.request')).toBe(
+      true,
+    );
+
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="push-dialog-confirm-btn"]') as HTMLButtonElement
+      ).click();
+    });
+
+    const message = postedMessages.find((item) => item.type === 'operation.push.request');
+    expect(message?.payload).toMatchObject({
+      repositoryId: 'repo-1',
+      branchName: 'main',
+      remote: 'origin',
+      setUpstream: false,
+      forceWithLease: false,
+      tags: false,
+    });
+
+    await act(async () => root.unmount());
+  });
+
+  it('opens a dialog requested by the extension host', async () => {
+    useRepositoryStore
+      .getState()
+      .setRepositories([{ id: 'repo-1', name: 'Repo One', path: '/path/one' }]);
+    const root = createRoot(container);
+    await act(async () => root.render(<GitGraphView />));
+
+    await act(async () => {
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'dialog-open',
+        type: 'ui.dialog.open',
+        payload: { dialog: 'pull' },
+      });
+    });
+
+    expect(container.querySelector('[data-testid="pull-dialog"]')).toBeTruthy();
+    expect(useUiStore.getState().requestedDialog).toBeNull();
+
+    await act(async () => root.unmount());
+  });
+
+  it('handles requestedDialog "fetch" by executing fetch without opening dialog', async () => {
+    useRepositoryStore
+      .getState()
+      .setRepositories([{ id: 'repo-1', name: 'Repo One', path: '/path/one' }]);
+    const root = createRoot(container);
+    await act(async () => root.render(<GitGraphView />));
+
+    await act(async () => {
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'dialog-open-fetch',
+        type: 'ui.dialog.open',
+        payload: { dialog: 'fetch' },
+      });
+    });
+
+    expect(container.querySelector('[data-testid="fetch-dialog"]')).toBeNull();
+    expect(useUiStore.getState().requestedDialog).toBeNull();
+
+    const message = postedMessages.find((item) => item.type === 'operation.fetch.request');
+    expect(message?.payload).toMatchObject({
+      repositoryId: 'repo-1',
+      prune: true,
+      all: true,
+    });
+
+    await act(async () => root.unmount());
+  });
+
+  it('shows success toast when a fetch operation completes successfully', async () => {
+    useRepositoryStore
+      .getState()
+      .setRepositories([{ id: 'repo-1', name: 'Repo One', path: '/path/one' }]);
+    const root = createRoot(container);
+    await act(async () => root.render(<GitGraphView />));
+
+    await act(async () => {
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'fetch-result',
+        type: 'operation.result',
+        payload: {
+          requestId: 'fetch-12345',
+          success: true,
+        },
+      });
+    });
+
+    const toast = container.querySelector('[data-testid="graph-toast-notification"]');
+    expect(toast).toBeTruthy();
+    expect(toast?.textContent).toContain('Fetch complete.');
+
+    await act(async () => root.unmount());
+  });
+
+  it('shows an undo action after an undoable operation and requests undo when clicked', async () => {
+    useRepositoryStore
+      .getState()
+      .setRepositories([{ id: 'repo-1', name: 'Repo One', path: '/path/one' }]);
+    const root = createRoot(container);
+    await act(async () => root.render(<GitGraphView />));
+
+    await act(async () => {
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'reset-result',
+        type: 'operation.result',
+        payload: {
+          requestId: 'reset-1',
+          success: true,
+          undo: {
+            available: true,
+            label: 'reset',
+            reflogIndex: 1,
+            expectedSha: 'abc123',
+          },
+        },
+      });
+    });
+
+    const action = container.querySelector('[data-testid="toast-action-btn"]') as HTMLButtonElement;
+    expect(action?.textContent).toBe('Undo');
+
+    await act(async () => action.click());
+
+    const message = postedMessages.find((item) => item.type === 'operation.undo.request');
+    expect(message?.payload).toEqual({
+      repositoryId: 'repo-1',
+      reflogIndex: 1,
+      expectedSha: 'abc123',
+    });
+
+    await act(async () => root.unmount());
+  });
+});
+
+describe('GitGraphView Phase 10 integrations', () => {
+  let container: HTMLDivElement;
+  let postedMessages: MessageEnvelope[] = [];
+
+  const baseCommit = {
+    parents: [] as string[],
+    author: { name: 'Alice', email: 'alice@example.com', timestamp: 2000, timezone: '+0000' },
+    committer: { name: 'Alice', email: 'alice@example.com', timestamp: 2000, timezone: '+0000' },
+  };
+
+  const sourceCommit: Commit = {
+    ...baseCommit,
+    sha: '1111111111111111111111111111111111111111',
+    shortSha: '1111111',
+    subject: 'Source commit',
+    refs: [
+      {
+        name: 'feature-a',
+        fullName: 'refs/heads/feature-a',
+        target: '1111111111111111111111111111111111111111',
+        kind: 'localBranch',
+      } as GitRef,
+    ],
+  };
+
+  const targetCommit: Commit = {
+    ...baseCommit,
+    parents: [sourceCommit.sha],
+    sha: '2222222222222222222222222222222222222222',
+    shortSha: '2222222',
+    subject: 'Target commit',
+    refs: [],
+  };
+
+  beforeEach(() => {
+    resetVsCodeApi();
+    postedMessages = [];
+    setVsCodeApi(
+      createMockVsCodeApi(undefined, (msg) => {
+        postedMessages.push(msg as MessageEnvelope);
+      }),
+    );
+    useRepositoryStore.getState().reset();
+    useGraphStore.getState().reset();
+    useSelectionStore.getState().reset();
+    useRepositoryStore
+      .getState()
+      .setRepositories([
+        { id: 'repo-1', name: 'Repo One', path: '/path/one', currentBranch: 'main' },
+      ]);
+    useGraphStore.getState().receiveCommitsPage({
+      repositoryId: 'repo-1',
+      page: { commits: [sourceCommit, targetCommit], hasMore: false },
+    });
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    if (container.parentNode) container.parentNode.removeChild(container);
+    useRepositoryStore.getState().reset();
+    useGraphStore.getState().reset();
+    useSelectionStore.getState().reset();
+    resetVsCodeApi();
+    vi.restoreAllMocks();
+  });
+
+  async function renderView() {
+    const root = createRoot(container);
+    await act(async () => root.render(<GitGraphView />));
+    return root;
+  }
+
+  function getBranchBadge(): HTMLElement {
+    const badge = container.querySelector('[data-ref-name="feature-a"]') as HTMLElement | null;
+    expect(badge).toBeTruthy();
+    return badge!;
+  }
+
+  function getTargetRow(): HTMLTableRowElement {
+    const row = container.querySelector(
+      '[data-commit-sha="2222222222222222222222222222222222222222"]',
+    ) as HTMLTableRowElement | null;
+    expect(row).toBeTruthy();
+    return row!;
+  }
+
+  it('opens the branch drop dialog when a badge is dropped on another commit', async () => {
+    const root = await renderView();
+
+    await act(async () => {
+      getBranchBadge().dispatchEvent(new Event('dragstart', { bubbles: true }));
+    });
+    await act(async () => {
+      getTargetRow().dispatchEvent(new Event('dragover', { bubbles: true, cancelable: true }));
+    });
+    expect(getTargetRow().getAttribute('data-drop-target')).toBe('true');
+
+    await act(async () => {
+      getTargetRow().dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }));
+    });
+
+    const dropDialog = container.querySelector('[data-testid="branch-drop-dialog"]');
+    expect(dropDialog).toBeTruthy();
+    expect(dropDialog?.textContent).toContain('feature-a');
+    expect(dropDialog?.textContent).toContain('2222222');
+
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="branch-drop-confirm-btn"]') as HTMLButtonElement
+      ).click();
+    });
+    expect(container.querySelector('[data-testid="merge-dialog"]')).toBeTruthy();
+
+    await act(async () => root.unmount());
+  });
+
+  it('cancels the drag when released outside a commit row', async () => {
+    const root = await renderView();
+
+    await act(async () => {
+      getBranchBadge().dispatchEvent(new Event('dragstart', { bubbles: true }));
+    });
+    await act(async () => {
+      getBranchBadge().dispatchEvent(new Event('dragend', { bubbles: true }));
+    });
+
+    expect(container.querySelector('[data-testid="branch-drop-dialog"]')).toBeNull();
+    expect(postedMessages.some((message) => message.type === 'operation.merge.request')).toBe(
+      false,
+    );
+
+    await act(async () => root.unmount());
+  });
+
+  it('opens the settings dialog from the toolbar gear button', async () => {
+    const root = await renderView();
+
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="toolbar-settings-btn"]') as HTMLButtonElement
+      ).click();
+    });
+
+    expect(container.querySelector('[data-testid="settings-dialog"]')).toBeTruthy();
+
+    await act(async () => root.unmount());
   });
 });

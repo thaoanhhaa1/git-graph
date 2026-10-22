@@ -124,6 +124,46 @@ describe('GitGraphPanel', () => {
     expect(bootstrapCall.payload.activeRepositoryId).toBeDefined();
   });
 
+  it('queues reveal requests until the webview is ready', () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+    const postSpy = vi.spyOn(panel.panel.webview, 'postMessage');
+
+    panel.revealCommit('abcdef1234567890abcdef1234567890abcdef12', 'repo-1');
+    expect(postSpy).not.toHaveBeenCalled();
+
+    const mockWebview = panel.panel.webview as unknown as MockWebview;
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'ready-1',
+      type: 'app.ready',
+      payload: { timestamp: Date.now() },
+    });
+
+    const types = postSpy.mock.calls.map((call) => (call[0] as { type: string }).type);
+    expect(types).toContain('app.bootstrap');
+    expect(types).toContain('graph.reveal.commit');
+  });
+
+  it('posts reveal requests immediately once the webview is ready', () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+    const mockWebview = panel.panel.webview as unknown as MockWebview;
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'ready-1',
+      type: 'app.ready',
+      payload: { timestamp: Date.now() },
+    });
+
+    const postSpy = vi.spyOn(panel.panel.webview, 'postMessage');
+    panel.revealCommit('abcdef1234567890abcdef1234567890abcdef12');
+
+    expect(postSpy).toHaveBeenCalledTimes(1);
+    expect(postSpy.mock.calls[0]?.[0]).toMatchObject({
+      type: 'graph.reveal.commit',
+      payload: { sha: 'abcdef1234567890abcdef1234567890abcdef12' },
+    });
+  });
+
   it('maps workspace folders to repositories in app.bootstrap', () => {
     (
       vscode.workspace as {
@@ -1143,6 +1183,147 @@ describe('GitGraphPanel', () => {
     });
   });
 
+  it('resolves interactive rebase plans and posts the result', async () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+    const sha = 'a'.repeat(40);
+    const entry = {
+      action: 'pick' as const,
+      sha,
+      shortSha: 'aaaaaaa',
+      subject: 'feat: initial',
+      author: 'Ada',
+      date: 1700000000,
+    };
+    const getRebasePlan = vi.fn().mockResolvedValue([entry]);
+    vi.spyOn(panel.repositoryManager, 'getRepository').mockReturnValue({
+      exec: vi.fn().mockResolvedValue({ stdout: `${sha}\n`, stderr: '', exitCode: 0 }),
+      getRebasePlan,
+    } as unknown as GitRepository);
+    const postSpy = vi.spyOn(panel.panel.webview, 'postMessage');
+
+    const mockWebview = panel.panel.webview as unknown as MockWebview;
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'plan-req-1',
+      requestId: 'plan-req-1',
+      type: 'rebase.interactive.plan.request',
+      payload: { repositoryId: 'repo-1', onto: 'main~2' },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(getRebasePlan).toHaveBeenCalledWith(sha);
+    const planCall = postSpy.mock.calls.find(
+      (call) => (call[0] as { type: string }).type === 'rebase.interactive.plan.result',
+    );
+    expect(planCall).toBeDefined();
+    expect(
+      (planCall?.[0] as { payload: { requestId: string; entries: unknown[]; error?: string } })
+        .payload,
+    ).toEqual({
+      requestId: 'plan-req-1',
+      repositoryId: 'repo-1',
+      onto: sha,
+      entries: [entry],
+    });
+  });
+
+  it('reports interactive rebase plan failures without throwing', async () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+    vi.spyOn(panel.repositoryManager, 'getRepository').mockReturnValue({
+      exec: vi.fn().mockRejectedValue(new Error("'missing' does not resolve to a commit.")),
+    } as unknown as GitRepository);
+    const postSpy = vi.spyOn(panel.panel.webview, 'postMessage');
+
+    const mockWebview = panel.panel.webview as unknown as MockWebview;
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'plan-req-2',
+      requestId: 'plan-req-2',
+      type: 'rebase.interactive.plan.request',
+      payload: { repositoryId: 'repo-1', onto: 'missing' },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const planCall = postSpy.mock.calls.find(
+      (call) => (call[0] as { type: string }).type === 'rebase.interactive.plan.result',
+    );
+    expect(
+      (planCall?.[0] as { payload: { entries: unknown[]; error?: string } }).payload,
+    ).toMatchObject({
+      onto: 'missing',
+      entries: [],
+      error: "'missing' does not resolve to a commit.",
+    });
+  });
+
+  it('routes interactive rebase start and action requests to GitOperationService', async () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+    const startSpy = vi
+      .spyOn(panel.gitOperationService, 'interactiveRebase')
+      .mockResolvedValue({ operationId: 'interactive-1', repositoryId: 'repo-1', success: true });
+    const continueSpy = vi
+      .spyOn(panel.gitOperationService, 'continueRebase')
+      .mockResolvedValue({ operationId: 'continue-1', repositoryId: 'repo-1', success: true });
+    const abortSpy = vi
+      .spyOn(panel.gitOperationService, 'abortRebase')
+      .mockResolvedValue({ operationId: 'abort-1', repositoryId: 'repo-1', success: true });
+    const skipSpy = vi
+      .spyOn(panel.gitOperationService, 'skipRebase')
+      .mockResolvedValue({ operationId: 'skip-1', repositoryId: 'repo-1', success: true });
+    const entry = {
+      action: 'pick' as const,
+      sha: 'a'.repeat(40),
+      shortSha: 'aaaaaaa',
+      subject: 'feat: initial',
+      author: 'Ada',
+      date: 1700000000,
+    };
+
+    const mockWebview = panel.panel.webview as unknown as MockWebview;
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'interactive-1',
+      type: 'rebase.interactive.start.request',
+      payload: {
+        repositoryId: 'repo-1',
+        onto: 'a'.repeat(40),
+        plan: [entry],
+        confirmedPublishedBranch: true,
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(startSpy).toHaveBeenCalledWith({
+      operationId: 'interactive-1',
+      repositoryId: 'repo-1',
+      onto: 'a'.repeat(40),
+      plan: [entry],
+      confirmedPublishedBranch: true,
+    });
+
+    for (const [type, id] of [
+      ['rebase.interactive.continue', 'continue-1'],
+      ['rebase.interactive.abort', 'abort-1'],
+      ['rebase.interactive.skip', 'skip-1'],
+    ] as const) {
+      mockWebview.fireMessage({
+        protocolVersion: 1,
+        id,
+        type,
+        payload: { repositoryId: 'repo-1' },
+      });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(continueSpy).toHaveBeenCalledWith({
+      operationId: 'continue-1',
+      repositoryId: 'repo-1',
+    });
+    expect(abortSpy).toHaveBeenCalledWith({ operationId: 'abort-1', repositoryId: 'repo-1' });
+    expect(skipSpy).toHaveBeenCalledWith({ operationId: 'skip-1', repositoryId: 'repo-1' });
+  });
+
   it('skips the cherry-pick confirmation prompt when noConfirm is set', async () => {
     const panel = GitGraphPanel.createOrShow(extensionUri);
     const cherryPickSpy = vi.spyOn(panel.gitOperationService, 'cherryPick').mockResolvedValue({
@@ -1668,6 +1849,167 @@ describe('getWebviewHtml', () => {
     expect(payload.status.unstaged).toHaveLength(1);
   });
 
+  it('handles worktree.list.request and posts worktree.list.result', async () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+    const mockWebview = panel.panel.webview as unknown as MockWebview;
+    const postSpy = vi.spyOn(panel.panel.webview, 'postMessage');
+
+    const worktrees = [
+      {
+        path: '/repos/main',
+        branch: 'main',
+        headSha: 'a'.repeat(40),
+        isCurrent: true,
+      },
+      {
+        path: '/repos/feature',
+        branch: 'feature',
+        headSha: 'b'.repeat(40),
+      },
+    ];
+    const mockGitRepo = { listWorktrees: vi.fn().mockResolvedValue(worktrees) };
+    vi.spyOn(panel.repositoryManager, 'getRepository').mockReturnValue(
+      mockGitRepo as unknown as GitRepository,
+    );
+
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'worktree-list-1',
+      type: 'worktree.list.request',
+      payload: { repositoryId: 'repo-1' },
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockGitRepo.listWorktrees).toHaveBeenCalledTimes(1);
+    const resultCall = postSpy.mock.calls.find(
+      (c) => (c[0] as { type: string }).type === 'worktree.list.result',
+    );
+    expect(resultCall).toBeDefined();
+    const payload = (
+      resultCall?.[0] as { payload: { worktrees: typeof worktrees; currentPath?: string } }
+    ).payload;
+    expect(payload.worktrees).toHaveLength(2);
+    expect(payload.currentPath).toBe('/repos/main');
+  });
+
+  it('routes worktree add and remove requests to GitOperationService', async () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+    const addSpy = vi
+      .spyOn(panel.gitOperationService, 'addGitWorktree')
+      .mockResolvedValue({ operationId: 'worktree-add-1', repositoryId: 'repo-1', success: true });
+    const removeSpy = vi.spyOn(panel.gitOperationService, 'removeGitWorktree').mockResolvedValue({
+      operationId: 'worktree-remove-1',
+      repositoryId: 'repo-1',
+      success: true,
+    });
+
+    const mockWebview = panel.panel.webview as unknown as MockWebview;
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'worktree-add-1',
+      type: 'worktree.add.request',
+      payload: { repositoryId: 'repo-1', path: '/repos/linked', newBranch: 'feature' },
+    });
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'worktree-remove-1',
+      type: 'worktree.remove.request',
+      payload: { repositoryId: 'repo-1', path: '/repos/linked', force: true },
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(addSpy).toHaveBeenCalledWith({
+      operationId: 'worktree-add-1',
+      repositoryId: 'repo-1',
+      path: '/repos/linked',
+      branch: undefined,
+      newBranch: 'feature',
+    });
+    expect(removeSpy).toHaveBeenCalledWith({
+      operationId: 'worktree-remove-1',
+      repositoryId: 'repo-1',
+      path: '/repos/linked',
+      force: true,
+    });
+  });
+
+  it('handles submodule.list.request and posts submodule.list.result', async () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+    const mockWebview = panel.panel.webview as unknown as MockWebview;
+    const postSpy = vi.spyOn(panel.panel.webview, 'postMessage');
+
+    const submodules = [
+      {
+        name: 'libs/core',
+        path: 'libs/core',
+        state: 'clean',
+        recordedSha: 'c'.repeat(40),
+        headSha: 'c'.repeat(40),
+      },
+    ];
+    const mockGitRepo = { listSubmodules: vi.fn().mockResolvedValue(submodules) };
+    vi.spyOn(panel.repositoryManager, 'getRepository').mockReturnValue(
+      mockGitRepo as unknown as GitRepository,
+    );
+
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'submodule-list-1',
+      type: 'submodule.list.request',
+      payload: { repositoryId: 'repo-1' },
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockGitRepo.listSubmodules).toHaveBeenCalledTimes(1);
+    const resultCall = postSpy.mock.calls.find(
+      (c) => (c[0] as { type: string }).type === 'submodule.list.result',
+    );
+    expect(resultCall).toBeDefined();
+    expect(
+      (resultCall?.[0] as { payload: { submodules: typeof submodules } }).payload.submodules,
+    ).toHaveLength(1);
+  });
+
+  it('opens a submodule repository and posts repository.changed', async () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+    const mockWebview = panel.panel.webview as unknown as MockWebview;
+    const postSpy = vi.spyOn(panel.panel.webview, 'postMessage');
+
+    const root = '/tmp/parent-repo';
+    const mockGitRepo = { rootPath: root };
+    vi.spyOn(panel.repositoryManager, 'getRepository').mockReturnValue(
+      mockGitRepo as unknown as GitRepository,
+    );
+    const openSpy = vi.spyOn(panel.repositoryManager, 'openRepository').mockResolvedValue({
+      id: 'submodule-repo',
+      rootPath: `${root}/libs/core`,
+      name: 'core',
+      gitDir: `${root}/libs/core/.git`,
+      isBare: false,
+    });
+
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'submodule-open-1',
+      type: 'submodule.open.request',
+      payload: { repositoryId: 'repo-1', path: 'libs/core' },
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(openSpy).toHaveBeenCalledWith(`${root}/libs/core`);
+    const changedCall = postSpy.mock.calls.find(
+      (c) => (c[0] as { type: string }).type === 'repository.changed',
+    );
+    expect(changedCall).toBeDefined();
+    expect(
+      (changedCall?.[0] as { payload: { activeRepositoryId: string } }).payload.activeRepositoryId,
+    ).toBe('submodule-repo');
+  });
+
   it('handles stash.list.request and posts stash.list.result', async () => {
     const panel = GitGraphPanel.createOrShow(extensionUri);
     const mockWebview = panel.panel.webview as unknown as MockWebview;
@@ -1852,5 +2194,223 @@ describe('getWebviewHtml', () => {
       vscode.ConfigurationTarget.Global,
     );
     expect(updateSpy).toHaveBeenCalledWith('pageSize', 250, vscode.ConfigurationTarget.Global);
+  });
+
+  it('posts view.config.changed when gitGraph settings change after webview is ready', async () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+
+    const getMock = vi.fn((key: string, defaultValue?: unknown) => {
+      if (key === 'showMinimap') return false;
+      if (key === 'compactMode') return true;
+      return defaultValue;
+    });
+    vi.spyOn(vscode.workspace, 'getConfiguration').mockReturnValue({
+      get: getMock,
+      update: vi.fn().mockResolvedValue(undefined),
+    } as unknown as vscode.WorkspaceConfiguration);
+
+    (panel as unknown as { _webviewReady: boolean })._webviewReady = true;
+
+    const postSpy = vi.spyOn(panel.panel.webview, 'postMessage');
+    const workspaceMock = vscode.workspace as unknown as {
+      _fireDidChangeConfiguration: (section: string) => void;
+    };
+    workspaceMock._fireDidChangeConfiguration('gitGraph');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const changed = postSpy.mock.calls
+      .map((call) => call[0] as { type?: string; payload?: Record<string, unknown> })
+      .find((message) => message.type === 'view.config.changed');
+    expect(changed).toBeDefined();
+    expect(changed?.payload).toMatchObject({ showMinimap: false, compactMode: true });
+
+    panel.dispose();
+  });
+
+  it('queues showDialog until the webview is ready and then forwards it', () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+    const postSpy = vi.spyOn(panel.panel.webview, 'postMessage');
+    const mockWebview = panel.panel.webview as unknown as MockWebview;
+
+    panel.showDialog('remotes');
+
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'ready-dialog',
+      type: 'app.ready',
+      payload: { timestamp: Date.now() },
+    });
+
+    const dialogCall = postSpy.mock.calls.find(
+      (call) => (call[0] as { type?: string }).type === 'ui.dialog.open',
+    );
+    expect(dialogCall).toBeDefined();
+    expect((dialogCall?.[0] as { payload: { dialog: string } }).payload.dialog).toBe('remotes');
+
+    panel.showDialog('push');
+    const forwarded = postSpy.mock.calls.filter(
+      (call) => (call[0] as { type?: string }).type === 'ui.dialog.open',
+    );
+    expect(forwarded).toHaveLength(2);
+  });
+
+  it('routes operation.pull.request to gitOperationService.pull', async () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+    const pullSpy = vi
+      .spyOn(panel.gitOperationService, 'pull')
+      .mockResolvedValue({ operationId: 'pull-1', repositoryId: 'repo-1', success: true });
+
+    const mockWebview = panel.panel.webview as unknown as MockWebview;
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'pull-1',
+      type: 'operation.pull.request',
+      payload: {
+        repositoryId: 'repo-1',
+        remote: 'origin',
+        branch: 'main',
+        strategy: 'rebase',
+        autostash: true,
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(pullSpy).toHaveBeenCalledWith({
+      operationId: 'pull-1',
+      repositoryId: 'repo-1',
+      remote: 'origin',
+      branch: 'main',
+      strategy: 'rebase',
+      autostash: true,
+    });
+  });
+
+  it('responds to remote.list.request with parsed remote details', async () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+    const remotes = [
+      {
+        name: 'origin',
+        fetchUrl: 'https://example.com/repo.git',
+        pushUrl: 'git@example.com:repo.git',
+      },
+    ];
+    const getRemoteDetails = vi.fn().mockResolvedValue(remotes);
+    vi.spyOn(panel.repositoryManager, 'getRepository').mockReturnValue({
+      getRemoteDetails,
+    } as unknown as GitRepository);
+
+    const postSpy = vi.spyOn(panel.panel.webview, 'postMessage');
+    const mockWebview = panel.panel.webview as unknown as MockWebview;
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'remotes-1',
+      type: 'remote.list.request',
+      payload: { repositoryId: 'repo-1' },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(getRemoteDetails).toHaveBeenCalledTimes(1);
+    const result = postSpy.mock.calls.find(
+      (call) => (call[0] as { type?: string }).type === 'remote.list.result',
+    );
+    expect((result?.[0] as { payload: { remotes: typeof remotes } }).payload.remotes).toEqual(
+      remotes,
+    );
+  });
+
+  it('responds to repository.syncStatus.request with ahead/behind status', async () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+    const status = {
+      repositoryId: 'repo-1',
+      currentBranch: 'main',
+      upstream: 'origin/main',
+      ahead: 2,
+      behind: 1,
+    };
+    const syncSpy = vi.spyOn(panel.gitOperationService, 'getSyncStatus').mockResolvedValue(status);
+
+    const postSpy = vi.spyOn(panel.panel.webview, 'postMessage');
+    const mockWebview = panel.panel.webview as unknown as MockWebview;
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'sync-1',
+      type: 'repository.syncStatus.request',
+      payload: { repositoryId: 'repo-1' },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(syncSpy).toHaveBeenCalledWith('repo-1');
+    const result = postSpy.mock.calls.find(
+      (call) => (call[0] as { type?: string }).type === 'repository.syncStatus.result',
+    );
+    expect((result?.[0] as { payload: { status: typeof status } }).payload.status).toEqual(status);
+  });
+
+  it('requires modal confirmation before undoing an operation', async () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+    const undoSpy = vi
+      .spyOn(panel.gitOperationService, 'undo')
+      .mockResolvedValue({ operationId: 'undo-1', repositoryId: 'repo-1', success: true });
+    const warningSpy = vi
+      .spyOn(vscode.window, 'showWarningMessage')
+      .mockResolvedValue('Undo' as never);
+
+    const mockWebview = panel.panel.webview as unknown as MockWebview;
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'undo-1',
+      type: 'operation.undo.request',
+      payload: {
+        repositoryId: 'repo-1',
+        reflogIndex: 1,
+        expectedSha: 'abcdef1234567890',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(warningSpy).toHaveBeenCalledWith(
+      expect.stringContaining('reset to abcdef1'),
+      { modal: true },
+      'Undo',
+    );
+    expect(undoSpy).toHaveBeenCalledWith({
+      operationId: 'undo-1',
+      repositoryId: 'repo-1',
+      reflogIndex: 1,
+      expectedSha: 'abcdef1234567890',
+    });
+  });
+
+  it('does not undo and resolves the webview operation when confirmation is cancelled', async () => {
+    const panel = GitGraphPanel.createOrShow(extensionUri);
+    const undoSpy = vi.spyOn(panel.gitOperationService, 'undo');
+    vi.spyOn(vscode.window, 'showWarningMessage').mockResolvedValue(undefined);
+    const postSpy = vi.spyOn(panel.panel.webview, 'postMessage');
+
+    const mockWebview = panel.panel.webview as unknown as MockWebview;
+    mockWebview.fireMessage({
+      protocolVersion: 1,
+      id: 'undo-cancel',
+      type: 'operation.undo.request',
+      payload: { repositoryId: 'repo-1', reflogIndex: 1 },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(undoSpy).not.toHaveBeenCalled();
+    const result = postSpy.mock.calls.find(
+      (call) => (call[0] as { type?: string }).type === 'operation.result',
+    );
+    expect(result?.[0]).toMatchObject({
+      payload: {
+        requestId: 'undo-cancel',
+        success: false,
+        error: { code: 'OPERATION_CANCELLED' },
+      },
+    });
   });
 });

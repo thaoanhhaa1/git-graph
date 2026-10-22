@@ -1,0 +1,66 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  nightly:
+    name: Nightly build, E2E & benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format
+
+      - name: Test suites
+        run: npm test
+
+      - name: Install Xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Real VS Code host E2E smoke
+        run: xvfb-run -a npm run test:e2e:host
+
+      - name: Performance benchmark (500K)
+        run: npm run benchmark:500k
+
+      - name: Package VSIX
+        env:
+          NODE_ENV: production
+        run: npm run package
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: git-graph-nightly-vsix
+          path: dist/*.vsix
+
+      - name: Upload benchmark report
+        uses: actions/upload-artifact@v4
+        with:
+          name: git-graph-benchmark-report
+          path: |
+            docs/benchmark-report.json
+            docs/benchmark-report.md

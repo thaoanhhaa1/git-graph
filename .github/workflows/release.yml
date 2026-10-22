@@ -59,3 +59,13 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: false
+
+      - name: Check Marketplace token
+        id: marketplace-token
+        run: echo "available=${{ secrets.VSCE_PAT != '' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to Visual Studio Marketplace
+        if: steps.marketplace-token.outputs.available == 'true'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx @vscode/vsce publish --no-dependencies --packagePath dist/*.vsix

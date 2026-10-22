@@ -22,6 +22,7 @@ export interface GraphStoreState {
   currentMatchIndex: number;
   activeRepoId: string | null;
   currentRequestId: string | null;
+  revealCommitSha: string | null;
   generation: number;
 }
 
@@ -66,6 +67,7 @@ export interface GraphStoreActions {
   setActiveRepoId: (repoId: string | null) => number;
   setError: (error: string | null, requestId?: string) => void;
   setIsFetching: (isFetching: boolean) => void;
+  setRevealCommitSha: (sha: string | null) => void;
   resetGraph: (repoId?: string | null) => number;
   reset: () => void;
 }
@@ -98,6 +100,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   currentMatchIndex: -1,
   activeRepoId: initialPersistedState?.activeRepositoryId ?? null,
   currentRequestId: null,
+  revealCommitSha: null,
   generation: 0,
 
   startLoadingPage: (options: StartLoadingOptions) => {
@@ -249,6 +252,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       isLoading: false,
       isLoadingMore: false,
       error: null,
+      revealCommitSha: null,
     });
     return nextGeneration;
   },
@@ -275,6 +279,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       isLoading: false,
       isLoadingMore: false,
       error: null,
+      revealCommitSha: null,
     });
     return nextGeneration;
   },
@@ -298,6 +303,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       isLoading: false,
       isLoadingMore: false,
       error: null,
+      revealCommitSha: null,
     });
     return nextGeneration;
   },
@@ -320,6 +326,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       isLoading: false,
       isLoadingMore: false,
       error: null,
+      revealCommitSha: null,
     });
     return nextGeneration;
   },
@@ -340,6 +347,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       isLoading: false,
       isLoadingMore: false,
       error: null,
+      revealCommitSha: null,
     });
     return nextGeneration;
   },
@@ -407,6 +415,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       isLoading: false,
       isLoadingMore: false,
       error: null,
+      revealCommitSha: null,
     });
     return nextGeneration;
   },
@@ -426,6 +435,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       isLoading: false,
       isLoadingMore: false,
       error: null,
+      revealCommitSha: null,
     });
     return nextGeneration;
   },
@@ -445,6 +455,8 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
   setIsFetching: (isFetching: boolean) => set({ isFetching }),
 
+  setRevealCommitSha: (sha: string | null) => set({ revealCommitSha: sha }),
+
   resetGraph: (repoId?: string | null) => {
     const state = get();
     const nextGeneration = state.generation + 1;
@@ -459,6 +471,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       isFetching: false,
       error: null,
       currentRequestId: null,
+      revealCommitSha: null,
     });
     return nextGeneration;
   },
@@ -483,6 +496,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       currentMatchIndex: -1,
       activeRepoId: null,
       currentRequestId: null,
+      revealCommitSha: null,
       generation: 0,
     });
     savePersistedState({

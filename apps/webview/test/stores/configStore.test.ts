@@ -115,4 +115,30 @@ describe('configStore', () => {
     useConfigStore.getState().resetConfig();
     expect(useConfigStore.getState().config).toEqual(DEFAULT_VIEW_CONFIG);
   });
+
+  it('updates minimap, compact display and blame settings', () => {
+    useConfigStore.getState().setShowMinimap(false);
+    expect(useConfigStore.getState().config.showMinimap).toBe(false);
+
+    useConfigStore.getState().setShowStatusBarItem(false);
+    expect(useConfigStore.getState().config.showStatusBarItem).toBe(false);
+
+    useConfigStore.getState().setBlameEnabled(false);
+    expect(useConfigStore.getState().config.blameEnabled).toBe(false);
+
+    useConfigStore.getState().setBlameFormat('${author} ${subject}');
+    expect(useConfigStore.getState().config.blameFormat).toBe('${author} ${subject}');
+
+    useConfigStore.getState().updateConfig({ compactMode: true, showMinimap: true });
+    expect(useConfigStore.getState().config.compactMode).toBe(true);
+    expect(useConfigStore.getState().config.showMinimap).toBe(true);
+  });
+
+  it('increments the column widths reset token', () => {
+    const initial = useConfigStore.getState().columnWidthsResetToken;
+    useConfigStore.getState().resetColumnWidths();
+    expect(useConfigStore.getState().columnWidthsResetToken).toBe(initial + 1);
+    useConfigStore.getState().resetColumnWidths();
+    expect(useConfigStore.getState().columnWidthsResetToken).toBe(initial + 2);
+  });
 });

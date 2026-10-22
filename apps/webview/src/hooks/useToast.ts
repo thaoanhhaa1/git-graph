@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ToastState, ToastType } from '../components/ui/Toast';
+import type { ToastAction, ToastState, ToastType } from '../components/ui/Toast';
 
 export interface UseToastResult {
   toast: ToastState | null;
-  showToast: (message: string, type?: ToastType, durationMs?: number) => void;
+  showToast: (message: string, type?: ToastType, durationMs?: number, action?: ToastAction) => void;
   dismiss: () => void;
 }
 
@@ -27,9 +27,9 @@ export function useToast(): UseToastResult {
   }, [clearTimer]);
 
   const showToast = useCallback(
-    (message: string, type: ToastType = 'info', durationMs = 3000) => {
+    (message: string, type: ToastType = 'info', durationMs = 3000, action?: ToastAction) => {
       clearTimer();
-      setToast({ message, type });
+      setToast({ message, type, ...(action ? { action } : {}) });
       if (durationMs > 0) {
         timerRef.current = setTimeout(() => {
           timerRef.current = null;

@@ -22,6 +22,7 @@ export interface FileChange {
   additions?: number;
   deletions?: number;
   isBinary: boolean;
+  isSubmodule?: boolean;
   similarity?: number;
 }
 
@@ -32,6 +33,7 @@ export const FileChangeSchema = z.object({
   additions: z.number().int().nonnegative().optional(),
   deletions: z.number().int().nonnegative().optional(),
   isBinary: z.boolean(),
+  isSubmodule: z.boolean().optional(),
   similarity: z.number().min(0).max(100).optional(),
 });
 

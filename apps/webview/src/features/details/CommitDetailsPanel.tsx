@@ -7,6 +7,7 @@ import {
   openDiffInVsCode,
   openFileAtRevisionInVsCode,
   requestCheckout,
+  requestCommitsPage,
 } from '../../messaging/messageRouter';
 import { RefBadge, type RefBadgeItem, combineLocalAndRemoteRefs } from '../refs/RefBadge';
 import { formatFullDateTime } from '../common/dateUtils';
@@ -510,9 +511,19 @@ export const CommitDetailsPanel: React.FC<CommitDetailsPanelProps> = ({
                       );
                     }
                   }}
+                  onViewFileAtRevision={(filePath, sha) => {
+                    if (repositoryId) {
+                      openFileAtRevisionInVsCode(repositoryId, filePath, sha ?? shaB);
+                    }
+                  }}
+                  onViewFileHistory={(filePath) => {
+                    useGraphStore.getState().setFilterPath(filePath);
+                    useSelectionStore.getState().clearSelection();
+                    requestCommitsPage();
+                  }}
                   onOpenFileInEditor={(filePath) => {
                     if (repositoryId) {
-                      openFileAtRevisionInVsCode(repositoryId, filePath, shaB);
+                      openFileAtRevisionInVsCode(repositoryId, filePath);
                     }
                   }}
                 />
@@ -781,9 +792,19 @@ export const CommitDetailsPanel: React.FC<CommitDetailsPanelProps> = ({
                       );
                     }
                   }}
+                  onViewFileAtRevision={(filePath, sha) => {
+                    if (repositoryId) {
+                      openFileAtRevisionInVsCode(repositoryId, filePath, sha ?? details.sha);
+                    }
+                  }}
+                  onViewFileHistory={(filePath) => {
+                    useGraphStore.getState().setFilterPath(filePath);
+                    useSelectionStore.getState().clearSelection();
+                    requestCommitsPage();
+                  }}
                   onOpenFileInEditor={(filePath) => {
                     if (repositoryId) {
-                      openFileAtRevisionInVsCode(repositoryId, filePath, details.sha);
+                      openFileAtRevisionInVsCode(repositoryId, filePath);
                     }
                   }}
                 />

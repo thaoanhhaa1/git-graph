@@ -1,4 +1,4 @@
-import { AppErrorCode, type SerializedAppError } from '@git-graph/shared';
+import { AppErrorCode, type OperationUndoInfo, type SerializedAppError } from '@git-graph/shared';
 import { sanitizeGitArgs, formatSanitizedCommand } from '@git-graph/git-core';
 
 /**
@@ -28,6 +28,7 @@ export interface OperationExecutionResult<T = unknown> {
   sanitizedStderr?: string;
   commandMetadata?: OperationCommandMetadata;
   durationMs?: number;
+  undo?: OperationUndoInfo;
 }
 
 /**
@@ -283,6 +284,7 @@ export function createOperationSuccessResult<T>(
   data?: T,
   commandMetadata?: OperationCommandMetadata,
   durationMs?: number,
+  undo?: OperationUndoInfo,
 ): OperationExecutionResult<T> {
   return {
     operationId,
@@ -291,6 +293,7 @@ export function createOperationSuccessResult<T>(
     data,
     commandMetadata,
     durationMs,
+    ...(undo ? { undo } : {}),
   };
 }
 

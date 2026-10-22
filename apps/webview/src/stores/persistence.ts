@@ -1,4 +1,5 @@
 import type { ViewConfig } from './configStore';
+import type { OperationMergeFastForwardMode } from '@git-graph/shared';
 import { getVsCodeApi } from '../messaging/vscodeApi';
 
 export interface ColumnWidths {
@@ -16,6 +17,7 @@ export interface WebviewPersistedState {
   searchTerm?: string;
   viewConfig?: Partial<ViewConfig>;
   columnWidths?: ColumnWidths;
+  lastMergeFastForwardMode?: OperationMergeFastForwardMode;
 }
 
 /**
@@ -42,4 +44,22 @@ export function savePersistedState(partial: Partial<WebviewPersistedState>): voi
   } catch {
     // Non-vscode environments (e.g. headless tests without mock) ignore silently
   }
+}
+
+/**
+ * Returns the last saved fast-forward mode used for merging, or undefined if none saved.
+ */
+export function getLastMergeFastForwardMode(): OperationMergeFastForwardMode | undefined {
+  const mode = loadPersistedState()?.lastMergeFastForwardMode;
+  if (mode === 'ff' || mode === 'no-ff' || mode === 'ff-only') {
+    return mode;
+  }
+  return undefined;
+}
+
+/**
+ * Saves the last used fast-forward mode for merging into persisted state.
+ */
+export function saveLastMergeFastForwardMode(mode: OperationMergeFastForwardMode): void {
+  savePersistedState({ lastMergeFastForwardMode: mode });
 }

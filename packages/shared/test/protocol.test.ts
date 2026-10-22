@@ -102,6 +102,19 @@ describe('Protocol Messages and Schemas', () => {
       expect(safeParseWebviewMessage(commitsRequestMsg).success).toBe(true);
     });
 
+    it('validates graph.reveal.commit messages from the extension', () => {
+      const valid = {
+        protocolVersion: 1,
+        id: 'reveal-1',
+        type: 'graph.reveal.commit',
+        payload: { sha: 'abcdef1234567890abcdef1234567890abcdef12', repositoryId: 'repo-1' },
+      };
+      expect(safeParseExtensionMessage(valid).success).toBe(true);
+
+      const invalid = { ...valid, payload: { sha: '' } };
+      expect(safeParseExtensionMessage(invalid).success).toBe(false);
+    });
+
     it('validates typed checkout requests', () => {
       const validCheckout = createMessage('operation.checkout.request', {
         repositoryId: 'repo-abc',
@@ -596,5 +609,82 @@ describe('Worktree & Stash protocol schemas', () => {
         }),
       ).success,
     ).toBe(true);
+  });
+});
+
+describe('Interactive rebase protocol schemas', () => {
+  const entry = {
+    action: 'pick' as const,
+    sha: 'a'.repeat(40),
+    shortSha: 'aaaaaaa',
+    subject: 'feat: initial',
+    author: 'Ada',
+    date: 1700000000,
+  };
+
+  it('accepts plan requests and returns plan results', () => {
+    expect(
+      safeParseWebviewMessage(
+        createMessage('rebase.interactive.plan.request', {
+          repositoryId: 'repo-1',
+          onto: 'main~2',
+        }),
+      ).success,
+    ).toBe(true);
+
+    expect(
+      safeParseExtensionMessage(
+        createMessage('rebase.interactive.plan.result', {
+          requestId: 'req-1',
+          repositoryId: 'repo-1',
+          onto: 'a'.repeat(40),
+          entries: [entry],
+        }),
+      ).success,
+    ).toBe(true);
+
+    expect(
+      safeParseExtensionMessage(
+        createMessage('rebase.interactive.plan.result', {
+          requestId: 'req-1',
+          repositoryId: 'repo-1',
+          onto: 'a'.repeat(40),
+          entries: [],
+          error: 'fatal: bad revision',
+        }),
+      ).success,
+    ).toBe(true);
+  });
+
+  it('validates start plans and rebase action requests', () => {
+    expect(
+      safeParseWebviewMessage(
+        createMessage('rebase.interactive.start.request', {
+          repositoryId: 'repo-1',
+          onto: 'a'.repeat(40),
+          plan: [entry, { ...entry, action: 'squash', sha: 'b'.repeat(40) }],
+          confirmedPublishedBranch: true,
+        }),
+      ).success,
+    ).toBe(true);
+
+    expect(
+      safeParseWebviewMessage(
+        createMessage('rebase.interactive.start.request', {
+          repositoryId: 'repo-1',
+          plan: [],
+        }),
+      ).success,
+    ).toBe(false);
+
+    for (const type of [
+      'rebase.interactive.continue',
+      'rebase.interactive.abort',
+      'rebase.interactive.skip',
+    ] as const) {
+      expect(safeParseWebviewMessage(createMessage(type, { repositoryId: 'repo-1' })).success).toBe(
+        true,
+      );
+    }
   });
 });

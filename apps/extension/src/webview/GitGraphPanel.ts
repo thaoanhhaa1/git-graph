@@ -26,18 +26,39 @@ import {
   type SearchResultPayload,
   type WorktreeStatusRequestPayload,
   type WorktreeDiscardRequestPayload,
+  type GitWorktreeListRequestPayload,
+  type GitWorktreeOpenRequestPayload,
+  type GitWorktreeListResultPayload,
+  type SubmoduleListRequestPayload,
+  type SubmoduleOpenRequestPayload,
+  type SubmoduleListResultPayload,
   type StashListRequestPayload,
   type StashSaveRequestPayload,
   type StashActionRequestPayload,
   type WorktreeStatusResultPayload,
   type StashListResultPayload,
   type GraphInvalidatedPayload,
+  type GraphRevealCommitPayload,
   type OperationCheckoutRequestPayload,
   type OperationCheckoutTargetType,
   type OperationBranchCreateRequestPayload,
   type OperationBranchRenameRequestPayload,
   type OperationBranchDeleteRequestPayload,
   type OperationPushRequestPayload,
+  type OperationPullRequestPayload,
+  type RemoteListRequestPayload,
+  type RemoteAddRequestPayload,
+  type RemoteRemoveRequestPayload,
+  type RemoteRenameRequestPayload,
+  type RemoteSetUrlRequestPayload,
+  type ReflogRecentRequestPayload,
+  type OperationUndoRequestPayload,
+  type RepositorySyncStatusRequestPayload,
+  type RemoteListResultPayload,
+  type ReflogRecentResultPayload,
+  type RepositorySyncStatusResultPayload,
+  type UiDialogOpenPayload,
+  type WebviewDialogKind,
   type OperationTagCreateRequestPayload,
   type OperationTagDeleteRequestPayload,
   type OperationMergeRequestPayload,
@@ -45,6 +66,10 @@ import {
   type OperationMergeAbortRequestPayload,
   type OperationRebaseRequestPayload,
   type OperationRebaseActionRequestPayload,
+  type RebaseInteractivePlanRequestPayload,
+  type RebaseInteractiveStartRequestPayload,
+  type RebaseInteractiveActionRequestPayload,
+  type RebaseInteractivePlanResultPayload,
   type OperationCherryPickRequestPayload,
   type OperationRevertRequestPayload,
   type OperationSequencerActionRequestPayload,
@@ -56,6 +81,7 @@ import {
   type CommitPage,
   type CommitOrdering,
   type FilterPathSetPayload,
+  type ViewConfigUpdatePayload,
   ViewConfigUpdatePayloadSchema,
 } from '@git-graph/shared';
 import { GitRepository } from '@git-graph/git-core';
@@ -66,6 +92,8 @@ import { RepositoryWatcher } from '../watchers/RepositoryWatcher';
 import { GitRevisionContentProvider } from './GitRevisionContentProvider';
 import { GitOperationService } from '../operations/GitOperationService';
 import { OperationPreflight } from '../operations/OperationPreflight';
+import { t } from '../i18n/l10n';
+import { isE2EEnabled, recordPostedMessage } from '../e2e/e2eBridge';
 
 /**
  * Manages the Git Graph Webview panel.
@@ -85,6 +113,9 @@ export class GitGraphPanel implements vscode.Disposable {
   private readonly _inFlightCommitsAbortControllers = new Map<string, AbortController>();
   private _disposables: vscode.Disposable[] = [];
   private _isDisposed = false;
+  private _webviewReady = false;
+  private _pendingDialog?: WebviewDialogKind;
+  private _pendingReveal?: GraphRevealCommitPayload;
 
   /**
    * Creates or reveals the single Git Graph webview panel.
@@ -198,6 +229,14 @@ export class GitGraphPanel implements vscode.Disposable {
     this._panel = panel;
     this._panel.iconPath = GitGraphPanel.getPanelIconPath(extensionUri);
     this._extensionUri = extensionUri;
+
+    if (isE2EEnabled()) {
+      const originalPostMessage = this._panel.webview.postMessage.bind(this._panel.webview);
+      this._panel.webview.postMessage = (message: unknown) => {
+        recordPostedMessage(message);
+        return originalPostMessage(message);
+      };
+    }
     this._repositoryManager = repositoryManager ?? new RepositoryManager();
     this._refreshCoordinator =
       refreshCoordinator ??
@@ -280,6 +319,20 @@ export class GitGraphPanel implements vscode.Disposable {
       }),
     );
 
+    // Keep the webview settings panel in sync with VS Code settings.json changes (M18.3)
+    this._disposables.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (!event.affectsConfiguration('gitGraph') || !this._webviewReady) {
+          return;
+        }
+        const msg = createMessage<'view.config.changed', ViewConfigUpdatePayload>(
+          'view.config.changed',
+          this._readViewConfig(),
+        );
+        this._panel.webview.postMessage(msg);
+      }),
+    );
+
     // Listen for repository changes: update watcher & push update to webview
     this._disposables.push(
       this._repositoryManager.onDidChangeRepositories((repositories) => {
@@ -338,6 +391,42 @@ export class GitGraphPanel implements vscode.Disposable {
 
   public get disposablesCount(): number {
     return this._disposables.length;
+  }
+
+  public showDialog(dialog: WebviewDialogKind): void {
+    if (this._isDisposed) {
+      return;
+    }
+    if (!this._webviewReady) {
+      this._pendingDialog = dialog;
+      return;
+    }
+    this._panel.webview.postMessage(
+      createMessage<'ui.dialog.open', UiDialogOpenPayload>('ui.dialog.open', { dialog }),
+    );
+  }
+
+  /**
+   * Reveals a commit in the graph, queueing the request until the webview is ready.
+   */
+  public revealCommit(sha: string, repositoryId?: string): void {
+    if (this._isDisposed) {
+      return;
+    }
+
+    const payload: GraphRevealCommitPayload = repositoryId ? { sha, repositoryId } : { sha };
+
+    if (!this._webviewReady) {
+      this._pendingReveal = payload;
+      return;
+    }
+
+    this._panel.webview.postMessage(
+      createMessage<'graph.reveal.commit', GraphRevealCommitPayload>(
+        'graph.reveal.commit',
+        payload,
+      ),
+    );
   }
 
   private _update(): void {
@@ -411,6 +500,17 @@ export class GitGraphPanel implements vscode.Disposable {
     void this._repositoryManager.refresh();
   }
 
+  /**
+   * Test-only entry point used by the real-host E2E harness to simulate a
+   * message coming from the webview. Only active when GIT_GRAPH_E2E=1.
+   */
+  public async handleWebviewMessageForTesting(message: unknown): Promise<void> {
+    if (!isE2EEnabled()) {
+      return;
+    }
+    await this._handleMessage(message);
+  }
+
   private async _handleMessage(message: unknown): Promise<void> {
     const parseResult = safeParseWebviewMessage(message);
     if (!parseResult.success) {
@@ -425,7 +525,18 @@ export class GitGraphPanel implements vscode.Disposable {
     const envelope = parseResult.data;
     switch (envelope.type) {
       case 'app.ready':
+        this._webviewReady = true;
         this.sendBootstrap();
+        if (this._pendingDialog) {
+          const dialog = this._pendingDialog;
+          this._pendingDialog = undefined;
+          this.showDialog(dialog);
+        }
+        if (this._pendingReveal) {
+          const reveal = this._pendingReveal;
+          this._pendingReveal = undefined;
+          this.revealCommit(reveal.sha, reveal.repositoryId);
+        }
         break;
       case 'repositories.list.request':
         if (envelope.payload?.refresh) {
@@ -495,6 +606,35 @@ export class GitGraphPanel implements vscode.Disposable {
       case 'worktree.discard.request':
         await this._handleWorktreeDiscardRequest(envelope.payload, envelope.id);
         break;
+      case 'worktree.list.request':
+        await this._handleGitWorktreeListRequest(envelope.payload, envelope.id);
+        break;
+      case 'worktree.add.request':
+        await this._gitOperationService.addGitWorktree({
+          operationId: envelope.id,
+          repositoryId: envelope.payload.repositoryId,
+          path: envelope.payload.path,
+          branch: envelope.payload.branch,
+          newBranch: envelope.payload.newBranch,
+        });
+        break;
+      case 'worktree.remove.request':
+        await this._gitOperationService.removeGitWorktree({
+          operationId: envelope.id,
+          repositoryId: envelope.payload.repositoryId,
+          path: envelope.payload.path,
+          force: envelope.payload.force,
+        });
+        break;
+      case 'worktree.open.request':
+        await this._handleGitWorktreeOpenRequest(envelope.payload);
+        break;
+      case 'submodule.list.request':
+        await this._handleSubmoduleListRequest(envelope.payload, envelope.id);
+        break;
+      case 'submodule.open.request':
+        await this._handleSubmoduleOpenRequest(envelope.payload);
+        break;
       case 'operation.commit.create.request':
         await this._gitOperationService.createCommit({
           operationId: envelope.id,
@@ -545,6 +685,33 @@ export class GitGraphPanel implements vscode.Disposable {
       case 'operation.push.request':
         await this._handlePushRequest(envelope.payload, envelope.id);
         break;
+      case 'operation.pull.request':
+        await this._handlePullRequest(envelope.payload, envelope.id);
+        break;
+      case 'remote.list.request':
+        await this._handleRemoteListRequest(envelope.payload, envelope.id);
+        break;
+      case 'remote.add.request':
+        await this._handleRemoteAddRequest(envelope.payload, envelope.id);
+        break;
+      case 'remote.remove.request':
+        await this._handleRemoteRemoveRequest(envelope.payload, envelope.id);
+        break;
+      case 'remote.rename.request':
+        await this._handleRemoteRenameRequest(envelope.payload, envelope.id);
+        break;
+      case 'remote.setUrl.request':
+        await this._handleRemoteSetUrlRequest(envelope.payload, envelope.id);
+        break;
+      case 'reflog.recent.request':
+        await this._handleReflogRecentRequest(envelope.payload, envelope.id);
+        break;
+      case 'operation.undo.request':
+        await this._handleUndoRequest(envelope.payload, envelope.id);
+        break;
+      case 'repository.syncStatus.request':
+        await this._handleSyncStatusRequest(envelope.payload, envelope.id);
+        break;
       case 'operation.tag.create.request':
         await this._handleCreateTagRequest(envelope.payload, envelope.id);
         break;
@@ -568,6 +735,21 @@ export class GitGraphPanel implements vscode.Disposable {
         break;
       case 'operation.rebase.skip.request':
         await this._handleRebaseSkipRequest(envelope.payload, envelope.id);
+        break;
+      case 'rebase.interactive.plan.request':
+        await this._handleInteractiveRebasePlanRequest(envelope.payload, envelope.id);
+        break;
+      case 'rebase.interactive.start.request':
+        await this._handleInteractiveRebaseStartRequest(envelope.payload, envelope.id);
+        break;
+      case 'rebase.interactive.continue':
+        await this._handleRebaseContinueRequest(envelope.payload, envelope.id);
+        break;
+      case 'rebase.interactive.abort':
+        await this._handleInteractiveRebaseAbortRequest(envelope.payload, envelope.id);
+        break;
+      case 'rebase.interactive.skip':
+        await this._handleInteractiveRebaseSkipRequest(envelope.payload, envelope.id);
         break;
       case 'operation.cherryPick.request':
         await this._handleCherryPickRequest(envelope.payload, envelope.id);
@@ -605,61 +787,79 @@ export class GitGraphPanel implements vscode.Disposable {
       case 'view.config.update': {
         const validated = ViewConfigUpdatePayloadSchema.safeParse(envelope.payload);
         if (validated.success) {
-          const extensionConfig = vscode.workspace.getConfiguration('gitGraph');
-          if (validated.data.commitOrdering !== undefined) {
-            await extensionConfig.update(
-              'commitOrdering',
-              validated.data.commitOrdering,
-              vscode.ConfigurationTarget.Global,
-            );
-          }
-          if (validated.data.pageSize !== undefined) {
-            await extensionConfig.update(
-              'pageSize',
-              validated.data.pageSize,
-              vscode.ConfigurationTarget.Global,
-            );
-          }
-          if (validated.data.showAuthor !== undefined) {
-            await extensionConfig.update(
-              'showAuthor',
-              validated.data.showAuthor,
-              vscode.ConfigurationTarget.Global,
-            );
-          }
-          if (validated.data.showDate !== undefined) {
-            await extensionConfig.update(
-              'showDate',
-              validated.data.showDate,
-              vscode.ConfigurationTarget.Global,
-            );
-          }
-          if (validated.data.showRemoteBranches !== undefined) {
-            await extensionConfig.update(
-              'showRemoteBranches',
-              validated.data.showRemoteBranches,
-              vscode.ConfigurationTarget.Global,
-            );
-          }
-          if (validated.data.showTags !== undefined) {
-            await extensionConfig.update(
-              'showTags',
-              validated.data.showTags,
-              vscode.ConfigurationTarget.Global,
-            );
-          }
-          if (validated.data.dateType !== undefined) {
-            await extensionConfig.update(
-              'dateType',
-              validated.data.dateType,
-              vscode.ConfigurationTarget.Global,
-            );
-          }
+          await this._applyViewConfigUpdate(validated.data);
         }
         break;
       }
       default:
         break;
+    }
+  }
+
+  private _readViewConfig(): ViewConfigUpdatePayload {
+    const extensionConfig = vscode.workspace.getConfiguration('gitGraph');
+    return {
+      showAuthor: extensionConfig.get<boolean>('showAuthor', true),
+      showDate: extensionConfig.get<boolean>('showDate', true),
+      showRemoteBranches: extensionConfig.get<boolean>('showRemoteBranches', true),
+      showTags: extensionConfig.get<boolean>('showTags', true),
+      dateType: extensionConfig.get<'relative' | 'absolute' | 'default'>('dateType', 'relative'),
+      pageSize: extensionConfig.get<number>('pageSize', 500),
+      commitOrdering: extensionConfig.get<CommitOrdering>('commitOrdering', 'date-order'),
+      compactMode: extensionConfig.get<boolean>('compactMode', false),
+      showMinimap: extensionConfig.get<boolean>('showMinimap', true),
+      showStatusBarItem: extensionConfig.get<boolean>('showStatusBarItem', true),
+      blameEnabled: extensionConfig.get<boolean>('blame.enabled', false),
+      blameFormat: extensionConfig.get<string>(
+        'blame.format',
+        '${author}, ${relativeDate} • ${subject}',
+      ),
+    };
+  }
+
+  private async _applyViewConfigUpdate(update: ViewConfigUpdatePayload): Promise<void> {
+    const extensionConfig = vscode.workspace.getConfiguration('gitGraph');
+    const entries: Array<[string, unknown]> = [];
+
+    if (update.commitOrdering !== undefined) {
+      entries.push(['commitOrdering', update.commitOrdering]);
+    }
+    if (update.pageSize !== undefined) {
+      entries.push(['pageSize', update.pageSize]);
+    }
+    if (update.showAuthor !== undefined) {
+      entries.push(['showAuthor', update.showAuthor]);
+    }
+    if (update.showDate !== undefined) {
+      entries.push(['showDate', update.showDate]);
+    }
+    if (update.showRemoteBranches !== undefined) {
+      entries.push(['showRemoteBranches', update.showRemoteBranches]);
+    }
+    if (update.showTags !== undefined) {
+      entries.push(['showTags', update.showTags]);
+    }
+    if (update.dateType !== undefined) {
+      entries.push(['dateType', update.dateType]);
+    }
+    if (update.compactMode !== undefined) {
+      entries.push(['compactMode', update.compactMode]);
+    }
+    if (update.showMinimap !== undefined) {
+      entries.push(['showMinimap', update.showMinimap]);
+    }
+    if (update.showStatusBarItem !== undefined) {
+      entries.push(['showStatusBarItem', update.showStatusBarItem]);
+    }
+    if (update.blameEnabled !== undefined) {
+      entries.push(['blame.enabled', update.blameEnabled]);
+    }
+    if (update.blameFormat !== undefined) {
+      entries.push(['blame.format', update.blameFormat]);
+    }
+
+    for (const [key, value] of entries) {
+      await extensionConfig.update(key, value, vscode.ConfigurationTarget.Global);
     }
   }
 
@@ -807,7 +1007,166 @@ export class GitGraphPanel implements vscode.Disposable {
       remote: payload.remote,
       setUpstream: payload.setUpstream,
       force: payload.force,
+      ...(payload.forceWithLease !== undefined ? { forceWithLease: payload.forceWithLease } : {}),
+      ...(payload.tags !== undefined ? { tags: payload.tags } : {}),
     });
+  }
+
+  private async _handlePullRequest(
+    payload: OperationPullRequestPayload,
+    operationId: string,
+  ): Promise<void> {
+    await this._gitOperationService.pull({
+      operationId,
+      repositoryId: payload.repositoryId,
+      remote: payload.remote,
+      branch: payload.branch,
+      strategy: payload.strategy,
+      autostash: payload.autostash,
+    });
+  }
+
+  private async _handleRemoteListRequest(
+    payload: RemoteListRequestPayload,
+    requestId?: string,
+  ): Promise<void> {
+    const gitRepo = await this._resolveRepository(payload.repositoryId);
+    if (!gitRepo) {
+      this._postRepositoryUnavailable(payload.repositoryId, requestId);
+      return;
+    }
+
+    const result = await gitRepo.getRemoteDetails();
+    const message = createMessage<'remote.list.result', RemoteListResultPayload>(
+      'remote.list.result',
+      {
+        requestId,
+        repositoryId: payload.repositoryId,
+        remotes: result,
+      },
+      requestId ? { requestId } : undefined,
+    );
+    await this._panel.webview.postMessage(message);
+  }
+
+  private async _handleRemoteAddRequest(
+    payload: RemoteAddRequestPayload,
+    operationId: string,
+  ): Promise<void> {
+    await this._gitOperationService.addRemote({
+      operationId,
+      repositoryId: payload.repositoryId,
+      name: payload.name,
+      url: payload.url,
+    });
+  }
+
+  private async _handleRemoteRemoveRequest(
+    payload: RemoteRemoveRequestPayload,
+    operationId: string,
+  ): Promise<void> {
+    await this._gitOperationService.removeRemote({
+      operationId,
+      repositoryId: payload.repositoryId,
+      name: payload.name,
+    });
+  }
+
+  private async _handleRemoteRenameRequest(
+    payload: RemoteRenameRequestPayload,
+    operationId: string,
+  ): Promise<void> {
+    await this._gitOperationService.renameRemote({
+      operationId,
+      repositoryId: payload.repositoryId,
+      oldName: payload.oldName,
+      newName: payload.newName,
+    });
+  }
+
+  private async _handleRemoteSetUrlRequest(
+    payload: RemoteSetUrlRequestPayload,
+    operationId: string,
+  ): Promise<void> {
+    await this._gitOperationService.setRemoteUrl({
+      operationId,
+      repositoryId: payload.repositoryId,
+      name: payload.name,
+      url: payload.url,
+      push: payload.push,
+    });
+  }
+
+  private async _handleReflogRecentRequest(
+    payload: ReflogRecentRequestPayload,
+    requestId?: string,
+  ): Promise<void> {
+    const entries = await this._gitOperationService.listReflog(
+      payload.repositoryId,
+      payload.limit ?? 20,
+    );
+    await this._panel.webview.postMessage(
+      createMessage<'reflog.recent.result', ReflogRecentResultPayload>(
+        'reflog.recent.result',
+        {
+          requestId,
+          repositoryId: payload.repositoryId,
+          entries,
+        },
+        requestId ? { requestId } : undefined,
+      ),
+    );
+  }
+
+  private async _handleUndoRequest(
+    payload: OperationUndoRequestPayload,
+    operationId: string,
+  ): Promise<void> {
+    const action = await vscode.window.showWarningMessage(
+      `Undo the last operation${
+        payload.expectedSha ? ` and reset to ${payload.expectedSha.slice(0, 7)}` : ''
+      }? Uncommitted changes will be discarded.`,
+      { modal: true },
+      'Undo',
+    );
+    if (action !== 'Undo') {
+      this._panel.webview.postMessage(
+        createMessage<'operation.result', OperationResultPayload>(
+          'operation.result',
+          {
+            requestId: operationId,
+            success: false,
+            error: {
+              code: AppErrorCode.OPERATION_CANCELLED,
+              message: 'Undo cancelled.',
+            },
+          },
+          { requestId: operationId },
+        ),
+      );
+      return;
+    }
+
+    await this._gitOperationService.undo({
+      operationId,
+      repositoryId: payload.repositoryId,
+      reflogIndex: payload.reflogIndex,
+      expectedSha: payload.expectedSha,
+    });
+  }
+
+  private async _handleSyncStatusRequest(
+    payload: RepositorySyncStatusRequestPayload,
+    requestId?: string,
+  ): Promise<void> {
+    const status = await this._gitOperationService.getSyncStatus(payload.repositoryId);
+    await this._panel.webview.postMessage(
+      createMessage<'repository.syncStatus.result', RepositorySyncStatusResultPayload>(
+        'repository.syncStatus.result',
+        { requestId, status },
+        requestId ? { requestId } : undefined,
+      ),
+    );
   }
 
   private async _handleCreateTagRequest(
@@ -1024,6 +1383,87 @@ export class GitGraphPanel implements vscode.Disposable {
       return;
     }
 
+    await this._gitOperationService.skipRebase({
+      operationId,
+      repositoryId: payload.repositoryId,
+    });
+  }
+
+  private async _handleInteractiveRebasePlanRequest(
+    payload: RebaseInteractivePlanRequestPayload,
+    requestId?: string,
+  ): Promise<void> {
+    let onto = payload.onto;
+    let entries: RebaseInteractivePlanResultPayload['entries'] = [];
+    let error: string | undefined;
+
+    try {
+      const repository = this._repositoryManager.getRepository(payload.repositoryId);
+      if (!repository) {
+        throw new Error(`Repository '${payload.repositoryId}' not found.`);
+      }
+      const resolved = await repository.exec([
+        'rev-parse',
+        '--verify',
+        '--end-of-options',
+        `${payload.onto}^{commit}`,
+      ]);
+      const resolvedSha = resolved.stdout.trim().split('\n')[0];
+      if (resolved.exitCode !== 0 || !resolvedSha) {
+        throw new Error(`'${payload.onto}' does not resolve to a commit.`);
+      }
+      onto = resolvedSha;
+      entries = await repository.getRebasePlan(resolvedSha);
+    } catch (err: unknown) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+
+    await this._panel.webview.postMessage(
+      createMessage<'rebase.interactive.plan.result', RebaseInteractivePlanResultPayload>(
+        'rebase.interactive.plan.result',
+        {
+          requestId,
+          repositoryId: payload.repositoryId,
+          onto,
+          entries,
+          ...(error ? { error } : {}),
+        },
+        requestId ? { requestId } : undefined,
+      ),
+    );
+  }
+
+  private async _handleInteractiveRebaseStartRequest(
+    payload: RebaseInteractiveStartRequestPayload,
+    operationId: string,
+  ): Promise<void> {
+    if (!payload.onto) {
+      throw new Error('Interactive rebase requires a target commit.');
+    }
+
+    await this._gitOperationService.interactiveRebase({
+      operationId,
+      repositoryId: payload.repositoryId,
+      onto: payload.onto,
+      plan: payload.plan,
+      ...(payload.confirmedPublishedBranch ? { confirmedPublishedBranch: true } : {}),
+    });
+  }
+
+  private async _handleInteractiveRebaseAbortRequest(
+    payload: RebaseInteractiveActionRequestPayload,
+    operationId: string,
+  ): Promise<void> {
+    await this._gitOperationService.abortRebase({
+      operationId,
+      repositoryId: payload.repositoryId,
+    });
+  }
+
+  private async _handleInteractiveRebaseSkipRequest(
+    payload: RebaseInteractiveActionRequestPayload,
+    operationId: string,
+  ): Promise<void> {
     await this._gitOperationService.skipRebase({
       operationId,
       repositoryId: payload.repositoryId,
@@ -1258,6 +1698,7 @@ export class GitGraphPanel implements vscode.Disposable {
       repositoryId: payload.repositoryId,
       remote: payload.remote,
       prune: payload.prune ?? true,
+      ...(payload.all !== undefined ? { all: payload.all } : {}),
     });
   }
 
@@ -1509,6 +1950,143 @@ export class GitGraphPanel implements vscode.Disposable {
       all: payload.all,
       untracked: payload.untracked,
     });
+  }
+
+  private async _handleGitWorktreeListRequest(
+    payload: GitWorktreeListRequestPayload,
+    requestId?: string,
+  ): Promise<void> {
+    const gitRepo = await this._resolveRepository(payload.repositoryId);
+    if (!gitRepo) {
+      this._postRepositoryUnavailable(payload.repositoryId, requestId);
+      return;
+    }
+
+    try {
+      const worktrees = await gitRepo.listWorktrees();
+      const current = worktrees.find((worktree) => worktree.isCurrent);
+      const msg = createMessage<'worktree.list.result', GitWorktreeListResultPayload>(
+        'worktree.list.result',
+        {
+          requestId,
+          repositoryId: payload.repositoryId,
+          worktrees,
+          ...(current ? { currentPath: current.path } : {}),
+        },
+        requestId ? { requestId } : undefined,
+      );
+      this._panel.webview.postMessage(msg);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      this._panel.webview.postMessage(
+        createErrorMessage(
+          t('Failed to list worktrees: {0}', errorMessage),
+          AppErrorCode.UNKNOWN_ERROR,
+          undefined,
+          requestId,
+        ),
+      );
+    }
+  }
+
+  private async _handleGitWorktreeOpenRequest(
+    payload: GitWorktreeOpenRequestPayload,
+  ): Promise<void> {
+    const gitRepo = await this._resolveRepository(payload.repositoryId);
+    if (!gitRepo) {
+      this._postRepositoryUnavailable(payload.repositoryId);
+      return;
+    }
+
+    const requestedPath = path.resolve(payload.path);
+    const worktrees = await gitRepo.listWorktrees();
+    const target = worktrees.find((worktree) => path.resolve(worktree.path) === requestedPath);
+    if (!target) {
+      this._panel.webview.postMessage(
+        createErrorMessage(
+          `No linked worktree found at '${payload.path}'.`,
+          AppErrorCode.UNKNOWN_ERROR,
+          { path: payload.path },
+        ),
+      );
+      return;
+    }
+
+    await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(target.path), true);
+  }
+
+  private async _handleSubmoduleListRequest(
+    payload: SubmoduleListRequestPayload,
+    requestId?: string,
+  ): Promise<void> {
+    const gitRepo = await this._resolveRepository(payload.repositoryId);
+    if (!gitRepo) {
+      this._postRepositoryUnavailable(payload.repositoryId, requestId);
+      return;
+    }
+
+    try {
+      const submodules = await gitRepo.listSubmodules();
+      const msg = createMessage<'submodule.list.result', SubmoduleListResultPayload>(
+        'submodule.list.result',
+        {
+          requestId,
+          repositoryId: payload.repositoryId,
+          submodules,
+        },
+        requestId ? { requestId } : undefined,
+      );
+      this._panel.webview.postMessage(msg);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      this._panel.webview.postMessage(
+        createErrorMessage(
+          t('Failed to list submodules: {0}', errorMessage),
+          AppErrorCode.UNKNOWN_ERROR,
+          undefined,
+          requestId,
+        ),
+      );
+    }
+  }
+
+  private async _handleSubmoduleOpenRequest(payload: SubmoduleOpenRequestPayload): Promise<void> {
+    const gitRepo = await this._resolveRepository(payload.repositoryId);
+    if (!gitRepo) {
+      this._postRepositoryUnavailable(payload.repositoryId);
+      return;
+    }
+
+    const targetPath = path.resolve(gitRepo.rootPath, payload.path);
+    const relative = path.relative(gitRepo.rootPath, targetPath);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      this._panel.webview.postMessage(
+        createErrorMessage(
+          `Refusing to open a submodule outside the repository: ${payload.path}`,
+          AppErrorCode.UNKNOWN_ERROR,
+          { path: payload.path },
+        ),
+      );
+      return;
+    }
+
+    const repository = await this._repositoryManager.openRepository(targetPath);
+    if (!repository) {
+      this._panel.webview.postMessage(
+        createErrorMessage(
+          `Submodule is not initialized or is not a Git repository: ${payload.path}`,
+          AppErrorCode.NOT_A_REPOSITORY,
+          { path: payload.path },
+        ),
+      );
+      return;
+    }
+
+    this._panel.webview.postMessage(
+      createMessage<'repository.changed', { activeRepositoryId: string }>('repository.changed', {
+        activeRepositoryId: repository.id,
+      }),
+    );
   }
 
   private async _handleStashListRequest(
@@ -1818,16 +2396,7 @@ export class GitGraphPanel implements vscode.Disposable {
       vscode.window.activeColorTheme?.kind === vscode.ColorThemeKind.HighContrastLight;
 
     const theme = isHighContrast ? 'high-contrast' : isLight ? 'light' : 'dark';
-    const extensionConfig = vscode.workspace.getConfiguration('gitGraph');
-    const config = {
-      showAuthor: extensionConfig.get<boolean>('showAuthor', true),
-      showDate: extensionConfig.get<boolean>('showDate', true),
-      showRemoteBranches: extensionConfig.get<boolean>('showRemoteBranches', true),
-      showTags: extensionConfig.get<boolean>('showTags', true),
-      dateType: extensionConfig.get<'relative' | 'absolute' | 'default'>('dateType', 'relative'),
-      pageSize: extensionConfig.get<number>('pageSize', 500),
-      commitOrdering: extensionConfig.get<CommitOrdering>('commitOrdering', 'date-order'),
-    };
+    const config = this._readViewConfig();
 
     const postPayload = (repositories: RepositoryItem[]) => {
       const activeRepo = this._repositoryManager.getActiveRepository();
@@ -1838,6 +2407,7 @@ export class GitGraphPanel implements vscode.Disposable {
         repositories,
         activeRepositoryId,
         theme,
+        locale: (vscode as { env?: { language?: string } }).env?.language ?? 'en',
         config,
       });
 

@@ -1,5 +1,13 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import type { WebviewDialogKind } from '@git-graph/shared';
+import { GitRepository } from '@git-graph/git-core';
+import type { BlameDecorationProvider } from '../blame/BlameDecorationProvider';
+import { LineHistoryPanel } from '../blame/LineHistoryPanel';
+
+export interface RegisterCommandOptions {
+  blameProvider?: BlameDecorationProvider;
+}
 
 /**
  * Registers all extension commands.
@@ -7,13 +15,119 @@ import * as path from 'path';
  * @param context The extension context.
  * @returns Array of disposables registered for commands.
  */
-export function registerCommands(context: vscode.ExtensionContext): vscode.Disposable[] {
+export function registerCommands(
+  context: vscode.ExtensionContext,
+  options: RegisterCommandOptions = {},
+): vscode.Disposable[] {
   const disposables: vscode.Disposable[] = [];
 
-  const openGraphDisposable = vscode.commands.registerCommand('gitGraph.openGraph', async () => {
+  const openDialog = async (dialog?: WebviewDialogKind) => {
     const { GitGraphPanel } = await import('../webview/GitGraphPanel');
-    GitGraphPanel.createOrShow(context.extensionUri);
-  });
+    const panel = GitGraphPanel.createOrShow(context.extensionUri);
+    if (dialog) {
+      panel.showDialog(dialog);
+    }
+  };
+
+  const toggleBlameDisposable = vscode.commands.registerCommand(
+    'gitGraph.toggleBlame',
+    async () => {
+      await options.blameProvider?.toggle();
+    },
+  );
+
+  const revealCommitDisposable = vscode.commands.registerCommand(
+    'gitGraph.revealCommit',
+    async (args?: { sha?: string; repositoryId?: string } | string) => {
+      const sha = typeof args === 'string' ? args : args?.sha;
+      if (!sha) {
+        return;
+      }
+
+      const repositoryId = typeof args === 'object' ? args.repositoryId : undefined;
+      const { GitGraphPanel } = await import('../webview/GitGraphPanel');
+      const panel = GitGraphPanel.createOrShow(context.extensionUri);
+      panel.revealCommit(sha, repositoryId);
+    },
+  );
+
+  const viewLineHistoryDisposable = vscode.commands.registerCommand(
+    'gitGraph.viewLineHistory',
+    async (fileUri?: vscode.Uri) => {
+      const activeEditor = vscode.window.activeTextEditor;
+      const uri = fileUri instanceof vscode.Uri ? fileUri : activeEditor?.document.uri;
+      if (!uri || uri.scheme !== 'file') {
+        await vscode.window.showWarningMessage(
+          'Open a file in a Git repository to view line history.',
+        );
+        return;
+      }
+
+      let document = activeEditor?.document;
+      if (!document || document.uri.fsPath !== uri.fsPath) {
+        document = await vscode.workspace.openTextDocument(uri);
+      }
+
+      let startLine = 1;
+      let endLine = 1;
+      if (activeEditor && activeEditor.document.uri.fsPath === uri.fsPath) {
+        const selection = activeEditor.selection;
+        startLine = selection.start.line + 1;
+        endLine = selection.isEmpty
+          ? startLine
+          : selection.end.character > 0
+            ? selection.end.line + 1
+            : selection.end.line;
+        endLine = Math.max(startLine, Math.min(endLine, document.lineCount));
+      }
+
+      try {
+        const repository = await GitRepository.open(path.dirname(uri.fsPath));
+        if (!repository) {
+          await vscode.window.showWarningMessage(
+            'The selected file is not inside a Git repository.',
+          );
+          return;
+        }
+
+        const relativePath = path.relative(repository.rootPath, uri.fsPath).replace(/\\/g, '/');
+        const result = await repository.getLineHistory(relativePath, startLine, endLine);
+        if (result.entries.length === 0) {
+          await vscode.window.showInformationMessage(
+            'No line history found for the selected range.',
+          );
+          return;
+        }
+
+        LineHistoryPanel.show(result, repository.id);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await vscode.window.showErrorMessage(`Failed to load line history: ${message}`);
+      }
+    },
+  );
+
+  const openGraphDisposable = vscode.commands.registerCommand(
+    'gitGraph.openGraph',
+    async (args?: { dialog?: WebviewDialogKind }) => openDialog(args?.dialog),
+  );
+  const fetchDisposable = vscode.commands.registerCommand('gitGraph.fetch', async () =>
+    openDialog('fetch'),
+  );
+  const pullDisposable = vscode.commands.registerCommand('gitGraph.pull', async () =>
+    openDialog('pull'),
+  );
+  const pushDisposable = vscode.commands.registerCommand('gitGraph.push', async () =>
+    openDialog('push'),
+  );
+  const manageRemotesDisposable = vscode.commands.registerCommand(
+    'gitGraph.manageRemotes',
+    async () => openDialog('remotes'),
+  );
+  const manageWorktreesDisposable = vscode.commands.registerCommand(
+    'gitGraph.manageWorktrees',
+    async () => openDialog('worktrees'),
+  );
 
   const viewFileHistoryDisposable = vscode.commands.registerCommand(
     'gitGraph.viewFileHistory',
@@ -78,11 +192,31 @@ export function registerCommands(context: vscode.ExtensionContext): vscode.Dispo
     },
   );
 
-  disposables.push(openGraphDisposable, viewFileHistoryDisposable, openFileAtRevisionDisposable);
-  context.subscriptions.push(
+  disposables.push(
     openGraphDisposable,
+    fetchDisposable,
+    pullDisposable,
+    pushDisposable,
+    manageRemotesDisposable,
+    manageWorktreesDisposable,
     viewFileHistoryDisposable,
     openFileAtRevisionDisposable,
+    toggleBlameDisposable,
+    revealCommitDisposable,
+    viewLineHistoryDisposable,
+  );
+  context.subscriptions.push(
+    openGraphDisposable,
+    fetchDisposable,
+    pullDisposable,
+    pushDisposable,
+    manageRemotesDisposable,
+    manageWorktreesDisposable,
+    viewFileHistoryDisposable,
+    openFileAtRevisionDisposable,
+    toggleBlameDisposable,
+    revealCommitDisposable,
+    viewLineHistoryDisposable,
   );
 
   return disposables;

@@ -19,10 +19,24 @@ import {
   requestRevert,
   requestReset,
   requestFetch,
+  requestPull,
+  requestRemoteList,
+  requestAddRemote,
+  requestRemoveRemote,
+  requestRenameRemote,
+  requestSetRemoteUrl,
+  requestUndo,
+  requestSyncStatus,
   requestWorktreeStatus,
   requestStageWorktree,
   requestUnstageWorktree,
   requestDiscardWorktree,
+  requestGitWorktreeList,
+  requestAddGitWorktree,
+  requestRemoveGitWorktree,
+  requestOpenGitWorktreeInNewWindow,
+  requestSubmoduleList,
+  requestOpenSubmodule,
   requestCreateCommit,
   requestStashList,
   requestSaveStash,
@@ -32,12 +46,19 @@ import {
   handleIncomingMessage,
   initMessageRouter,
   resetInvalidationThrottle,
+  resetPendingReveal,
 } from '../../src/messaging/messageRouter';
 import { setVsCodeApi, createMockVsCodeApi } from '../../src/messaging/vscodeApi';
 import { useRepositoryStore } from '../../src/stores/repositoryStore';
 import { useGraphStore } from '../../src/stores/graphStore';
 import { useSelectionStore } from '../../src/stores/selectionStore';
 import { useWorktreeStore } from '../../src/stores/worktreeStore';
+import { useOperationStore } from '../../src/stores/operationStore';
+import { useRemoteStore } from '../../src/stores/remoteStore';
+import { useUiStore } from '../../src/stores/uiStore';
+import { useGitWorktreeStore } from '../../src/stores/gitWorktreeStore';
+import { useSubmoduleStore } from '../../src/stores/submoduleStore';
+import { getLocale, setLocale } from '../../src/i18n';
 import type {
   MessageEnvelope,
   AppBootstrapMessage,
@@ -62,7 +83,14 @@ describe('messageRouter', () => {
     useRepositoryStore.getState().reset();
     useGraphStore.getState().reset();
     useSelectionStore.getState().reset();
+    useOperationStore.getState().reset();
+    useRemoteStore.getState().reset();
+    useGitWorktreeStore.getState().reset();
+    useSubmoduleStore.getState().reset();
+    setLocale('en');
+    useUiStore.getState().clearRequestedDialog();
     resetInvalidationThrottle();
+    resetPendingReveal();
   });
 
   afterEach(() => {
@@ -238,6 +266,112 @@ describe('messageRouter', () => {
       repositoryId: 'repo-1',
       remote: 'origin',
       prune: true,
+    });
+  });
+
+  it('requests fetch for all remotes', () => {
+    useRepositoryStore
+      .getState()
+      .setRepositories([{ id: 'repo-1', name: 'Repo 1', path: '/repo-1' }]);
+    postedMessages = [];
+
+    requestFetch({ all: true });
+
+    expect(postedMessages[0]?.payload).toEqual({
+      repositoryId: 'repo-1',
+      prune: true,
+      all: true,
+    });
+  });
+
+  it('requests pull with strategy and autostash options', () => {
+    useRepositoryStore
+      .getState()
+      .setRepositories([{ id: 'repo-1', name: 'Repo 1', path: '/repo-1' }]);
+    postedMessages = [];
+
+    const requestId = requestPull({
+      remote: 'origin',
+      branch: 'main',
+      strategy: 'rebase',
+      autostash: true,
+    });
+
+    expect(requestId).toBeTruthy();
+    expect(useOperationStore.getState().activeRequestId).toBe(requestId);
+    expect(useGraphStore.getState().isFetching).toBe(true);
+    expect(postedMessages[0]?.type).toBe('operation.pull.request');
+    expect(postedMessages[0]?.id).toBe(requestId);
+    expect(postedMessages[0]?.payload).toEqual({
+      repositoryId: 'repo-1',
+      remote: 'origin',
+      branch: 'main',
+      strategy: 'rebase',
+      autostash: true,
+    });
+  });
+
+  it.each([
+    ['add', requestAddRemote, 'remote.add.request', { name: 'fork', url: 'https://x/fork.git' }],
+    ['remove', requestRemoveRemote, 'remote.remove.request', { name: 'fork' }],
+    ['rename', requestRenameRemote, 'remote.rename.request', { oldName: 'a', newName: 'b' }],
+    [
+      'set URL',
+      requestSetRemoteUrl,
+      'remote.setUrl.request',
+      { name: 'origin', url: 'https://x', push: true },
+    ],
+  ] as const)(
+    'requests remote %s with a tracked operation ID',
+    (_label, request, type, payload) => {
+      useRepositoryStore
+        .getState()
+        .setRepositories([{ id: 'repo-1', name: 'Repo 1', path: '/repo-1' }]);
+      postedMessages = [];
+
+      const requestId = request({ repositoryId: 'repo-1', ...payload } as never);
+
+      expect(requestId).toBeTruthy();
+      expect(useOperationStore.getState().activeRequestId).toBe(requestId);
+      expect(postedMessages[0]?.type).toBe(type);
+      expect(postedMessages[0]?.payload).toEqual({ repositoryId: 'repo-1', ...payload });
+    },
+  );
+
+  it('requests remote list and sync status without starting an operation', () => {
+    useRepositoryStore
+      .getState()
+      .setRepositories([{ id: 'repo-1', name: 'Repo 1', path: '/repo-1' }]);
+    postedMessages = [];
+
+    requestRemoteList('repo-1');
+    requestSyncStatus();
+
+    expect(postedMessages[0]?.type).toBe('remote.list.request');
+    expect(postedMessages[1]?.type).toBe('repository.syncStatus.request');
+    expect(useRemoteStore.getState().isLoading).toBe(true);
+    expect(useOperationStore.getState().activeRequestId).toBeNull();
+  });
+
+  it('requests undo with reflog target and starts an operation', () => {
+    useRepositoryStore
+      .getState()
+      .setRepositories([{ id: 'repo-1', name: 'Repo 1', path: '/repo-1' }]);
+    postedMessages = [];
+
+    const requestId = requestUndo({
+      repositoryId: 'repo-1',
+      reflogIndex: 1,
+      expectedSha: 'abc123',
+    });
+
+    expect(requestId).toBeTruthy();
+    expect(useOperationStore.getState().activeRequestId).toBe(requestId);
+    expect(postedMessages[0]?.type).toBe('operation.undo.request');
+    expect(postedMessages[0]?.payload).toEqual({
+      repositoryId: 'repo-1',
+      reflogIndex: 1,
+      expectedSha: 'abc123',
     });
   });
 
@@ -557,6 +691,52 @@ describe('messageRouter', () => {
     expect(requestPopStash(0)).toBeNull();
   });
 
+  it('requests worktree and submodule operations with the active repository', () => {
+    useRepositoryStore
+      .getState()
+      .setRepositories([{ id: 'repo-1', name: 'Repo 1', path: '/repo-1' }]);
+
+    expect(requestGitWorktreeList()).toBeTruthy();
+    expect(requestAddGitWorktree({ path: '/repos/new', newBranch: 'feature' })).toBeTruthy();
+    expect(requestRemoveGitWorktree({ path: '/repos/new', force: true })).toBeTruthy();
+    expect(requestOpenGitWorktreeInNewWindow({ path: '/repos/new' })).toBeTruthy();
+    expect(requestSubmoduleList()).toBeTruthy();
+    expect(requestOpenSubmodule({ path: 'libs/core' })).toBeTruthy();
+
+    expect(postedMessages.map((m) => m.type)).toEqual(
+      expect.arrayContaining([
+        'worktree.list.request',
+        'worktree.add.request',
+        'worktree.remove.request',
+        'worktree.open.request',
+        'submodule.list.request',
+        'submodule.open.request',
+      ]),
+    );
+
+    const add = postedMessages.find((m) => m.type === 'worktree.add.request');
+    expect(add?.payload).toMatchObject({
+      repositoryId: 'repo-1',
+      path: '/repos/new',
+      newBranch: 'feature',
+    });
+  });
+
+  it('applies the bootstrap locale to webview translations', () => {
+    handleIncomingMessage({
+      protocolVersion: 1,
+      id: 'boot-locale',
+      type: 'app.bootstrap',
+      payload: {
+        protocolVersion: 1,
+        repositories: [],
+        locale: 'vi',
+      },
+    });
+
+    expect(getLocale()).toBe('vi');
+  });
+
   describe('handling incoming messages', () => {
     it('safely ignores invalid or non-protocol messages', () => {
       expect(handleIncomingMessage(null)).toBe(false);
@@ -680,6 +860,39 @@ describe('messageRouter', () => {
       expect(useWorktreeStore.getState().stashes).toHaveLength(1);
     });
 
+    it('handles worktree.list.result and submodule.list.result messages', () => {
+      expect(
+        handleIncomingMessage({
+          protocolVersion: 1,
+          id: 'worktree-list-result',
+          type: 'worktree.list.result',
+          payload: {
+            repositoryId: 'repo-1',
+            currentPath: '/repos/main',
+            worktrees: [
+              { path: '/repos/main', branch: 'main', isCurrent: true },
+              { path: '/repos/feature', branch: 'feature' },
+            ],
+          },
+        }),
+      ).toBe(true);
+      expect(useGitWorktreeStore.getState().worktrees).toHaveLength(2);
+      expect(useGitWorktreeStore.getState().currentPath).toBe('/repos/main');
+
+      expect(
+        handleIncomingMessage({
+          protocolVersion: 1,
+          id: 'submodule-list-result',
+          type: 'submodule.list.result',
+          payload: {
+            repositoryId: 'repo-1',
+            submodules: [{ name: 'libs/core', path: 'libs/core', state: 'dirty' }],
+          },
+        }),
+      ).toBe(true);
+      expect(useSubmoduleStore.getState().submodules).toHaveLength(1);
+    });
+
     it('refreshes worktree status and stashes on graph.invalidated for the active repo', () => {
       useRepositoryStore
         .getState()
@@ -741,6 +954,148 @@ describe('messageRouter', () => {
       expect(useGraphStore.getState().isLoading).toBe(false);
     });
 
+    it('reveals a commit that is already loaded in the graph', () => {
+      useRepositoryStore
+        .getState()
+        .setRepositories([{ id: 'repo-1', name: 'Repo 1', path: '/r1' }]);
+      useRepositoryStore.getState().setActiveRepositoryId('repo-1');
+      useGraphStore.setState({
+        activeRepoId: 'repo-1',
+        commits: [
+          {
+            sha: 'aabbccddeeff0011223344556677889900aabbcc',
+            shortSha: 'aabbccd',
+            parents: [],
+            author: { name: 'Dev', email: 'dev@dev.com', timestamp: 0, timezone: '' },
+            committer: { name: 'Dev', email: 'dev@dev.com', timestamp: 0, timezone: '' },
+            subject: 'feat: target',
+            refs: [],
+          },
+        ],
+      });
+
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'reveal-1',
+        type: 'graph.reveal.commit',
+        payload: {
+          sha: 'aabbccddeeff0011223344556677889900aabbcc',
+          repositoryId: 'repo-1',
+        },
+      });
+
+      expect(useGraphStore.getState().revealCommitSha).toBe(
+        'aabbccddeeff0011223344556677889900aabbcc',
+      );
+      expect(useSelectionStore.getState().selectedCommitSha).toBe(
+        'aabbccddeeff0011223344556677889900aabbcc',
+      );
+    });
+
+    it('loads the next page while a revealed commit is not yet present', () => {
+      useRepositoryStore
+        .getState()
+        .setRepositories([{ id: 'repo-1', name: 'Repo 1', path: '/r1' }]);
+      useRepositoryStore.getState().setActiveRepositoryId('repo-1');
+      useGraphStore.setState({
+        activeRepoId: 'repo-1',
+        commits: [],
+        hasMore: true,
+        cursor: 'cursor-1',
+        isLoading: false,
+        isLoadingMore: false,
+        currentRequestId: null,
+      });
+      postedMessages = [];
+
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'reveal-2',
+        type: 'graph.reveal.commit',
+        payload: { sha: 'ffffffffffffffffffffffffffffffffffffffff' },
+      });
+
+      const request = postedMessages.find((message) => message.type === 'commits.page.request');
+      expect(request).toBeDefined();
+      expect((request?.payload as { cursor?: string }).cursor).toBe('cursor-1');
+      expect(useGraphStore.getState().revealCommitSha).toBeNull();
+    });
+
+    it('falls back to a hash search when the commit cannot be paginated into the graph', () => {
+      useRepositoryStore
+        .getState()
+        .setRepositories([{ id: 'repo-1', name: 'Repo 1', path: '/r1' }]);
+      useRepositoryStore.getState().setActiveRepositoryId('repo-1');
+      useGraphStore.setState({
+        activeRepoId: 'repo-1',
+        commits: [],
+        hasMore: false,
+        cursor: undefined,
+        isLoading: false,
+        isLoadingMore: false,
+        currentRequestId: null,
+        searchTerm: '',
+        searchType: 'all',
+      });
+      postedMessages = [];
+
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'reveal-3',
+        type: 'graph.reveal.commit',
+        payload: { sha: 'ffffffffffffffffffffffffffffffffffffffff' },
+      });
+
+      const request = postedMessages.find((message) => message.type === 'search.request');
+      expect(request).toBeDefined();
+      expect((request?.payload as { query: string }).query).toBe(
+        'ffffffffffffffffffffffffffffffffffffffff',
+      );
+      expect(useGraphStore.getState().searchType).toBe('hash');
+      expect(useGraphStore.getState().searchTerm).toBe('ffffffffffffffffffffffffffffffffffffffff');
+    });
+
+    it('does not repeat the hash search when the fallback result is empty', () => {
+      useRepositoryStore
+        .getState()
+        .setRepositories([{ id: 'repo-1', name: 'Repo 1', path: '/r1' }]);
+      useRepositoryStore.getState().setActiveRepositoryId('repo-1');
+      useGraphStore.setState({
+        activeRepoId: 'repo-1',
+        commits: [],
+        hasMore: false,
+        cursor: undefined,
+        isLoading: false,
+        isLoadingMore: false,
+        currentRequestId: null,
+        searchTerm: '',
+        searchType: 'all',
+      });
+      postedMessages = [];
+
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'reveal-4',
+        type: 'graph.reveal.commit',
+        payload: { sha: 'ffffffffffffffffffffffffffffffffffffffff' },
+      });
+      expect(postedMessages.filter((message) => message.type === 'search.request')).toHaveLength(1);
+
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'search-result-4',
+        type: 'search.result',
+        payload: {
+          repositoryId: 'repo-1',
+          query: 'ffffffffffffffffffffffffffffffffffffffff',
+          searchType: 'hash',
+          commits: [],
+        },
+      });
+
+      expect(postedMessages.filter((message) => message.type === 'search.request')).toHaveLength(1);
+    });
+
     it('handles graph.invalidated message by refreshing commits', () => {
       useRepositoryStore
         .getState()
@@ -784,6 +1139,110 @@ describe('messageRouter', () => {
 
       const commitRequests = postedMessages.filter((m) => m.type === 'commits.page.request');
       expect(commitRequests).toHaveLength(1);
+    });
+
+    it('stores remote list results', () => {
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'remote-list-result',
+        type: 'remote.list.result',
+        payload: {
+          repositoryId: 'repo-1',
+          remotes: [
+            {
+              name: 'origin',
+              fetchUrl: 'https://example.com/repo.git',
+              pushUrl: 'https://example.com/repo.git',
+            },
+          ],
+        },
+      });
+
+      expect(useRemoteStore.getState().remotes).toEqual([
+        {
+          name: 'origin',
+          fetchUrl: 'https://example.com/repo.git',
+          pushUrl: 'https://example.com/repo.git',
+        },
+      ]);
+      expect(useRemoteStore.getState().isLoading).toBe(false);
+    });
+
+    it('stores reflog results', () => {
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'reflog-result',
+        type: 'reflog.recent.result',
+        payload: {
+          repositoryId: 'repo-1',
+          entries: [
+            {
+              sha: 'abc',
+              shortSha: 'abc1234',
+              index: 0,
+              selector: 'HEAD@{0}',
+              subject: 'commit: test',
+            },
+          ],
+        },
+      });
+
+      expect(useOperationStore.getState().reflogEntries).toHaveLength(1);
+    });
+
+    it('stores sync status results and requested dialogs', () => {
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'sync-result',
+        type: 'repository.syncStatus.result',
+        payload: {
+          repositoryId: 'repo-1',
+          status: {
+            repositoryId: 'repo-1',
+            currentBranch: 'main',
+            upstream: 'origin/main',
+            ahead: 2,
+            behind: 1,
+          },
+        },
+      });
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'dialog',
+        type: 'ui.dialog.open',
+        payload: { dialog: 'push' },
+      });
+
+      expect(useRepositoryStore.getState().syncStatus).toMatchObject({
+        ahead: 2,
+        behind: 1,
+        upstream: 'origin/main',
+      });
+      expect(useUiStore.getState().requestedDialog).toBe('push');
+    });
+
+    it('stores undo metadata from operation results', () => {
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'reset-result',
+        type: 'operation.result',
+        payload: {
+          requestId: 'reset-1',
+          success: true,
+          undo: {
+            available: true,
+            label: 'reset',
+            reflogIndex: 1,
+            expectedSha: 'abc123',
+          },
+        },
+      });
+
+      expect(useOperationStore.getState().lastResult?.undo).toMatchObject({
+        available: true,
+        label: 'reset',
+        expectedSha: 'abc123',
+      });
     });
 
     it('executes trailing refresh after throttle delay so no invalidation is permanently dropped', () => {
@@ -839,6 +1298,24 @@ describe('messageRouter', () => {
       });
 
       expect(useGraphStore.getState().isFetching).toBe(false);
+    });
+
+    it('does not surface cancelled operations as errors', () => {
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'undo-cancelled',
+        type: 'operation.result',
+        payload: {
+          requestId: 'undo-1',
+          success: false,
+          error: {
+            code: AppErrorCode.OPERATION_CANCELLED,
+            message: 'Undo cancelled.',
+          },
+        },
+      });
+
+      expect(useGraphStore.getState().error).toBeNull();
     });
 
     it('surfaces checkout failures from operation.result', () => {

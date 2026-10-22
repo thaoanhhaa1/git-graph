@@ -130,4 +130,73 @@ describe('Modal', () => {
     });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('moves focus into the dialog and restores it when closed', async () => {
+    const trigger = document.createElement('button');
+    trigger.textContent = 'Open';
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    await act(async () => {
+      root.render(
+        <Modal
+          isOpen
+          onClose={vi.fn()}
+          titleId="focus-title"
+          overlayClassName="test-overlay"
+          dialogClassName="test-dialog"
+        >
+          <ModalTitle id="focus-title">Focus</ModalTitle>
+          <button id="first-action">First</button>
+          <button id="second-action">Second</button>
+        </Modal>,
+      );
+    });
+    expect(document.activeElement?.id).toBe('first-action');
+
+    await act(async () => {
+      root.render(
+        <Modal isOpen={false} onClose={vi.fn()} titleId="focus-title">
+          <div />
+        </Modal>,
+      );
+    });
+    expect(document.activeElement).toBe(trigger);
+
+    trigger.remove();
+  });
+
+  it('traps Tab focus inside the dialog', async () => {
+    await act(async () => {
+      root.render(
+        <Modal
+          isOpen
+          onClose={vi.fn()}
+          titleId="tab-title"
+          overlayClassName="test-overlay"
+          dialogClassName="test-dialog"
+        >
+          <ModalTitle id="tab-title">Focus</ModalTitle>
+          <button id="first-action">First</button>
+          <button id="second-action">Second</button>
+        </Modal>,
+      );
+    });
+
+    const first = container.querySelector('#first-action') as HTMLButtonElement;
+    const second = container.querySelector('#second-action') as HTMLButtonElement;
+
+    second.focus();
+    await act(async () => {
+      second.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    });
+    expect(document.activeElement).toBe(first);
+
+    await act(async () => {
+      first.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }),
+      );
+    });
+    expect(document.activeElement).toBe(second);
+  });
 });

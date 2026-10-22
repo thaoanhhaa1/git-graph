@@ -106,6 +106,36 @@ describe('Toolbar', () => {
     });
   });
 
+  it('renders and invokes pull, push, and manage-remotes actions', async () => {
+    const onPull = vi.fn();
+    const onPush = vi.fn();
+    const onManageRemotes = vi.fn();
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<Toolbar onPull={onPull} onPush={onPush} onManageRemotes={onManageRemotes} />);
+    });
+
+    await act(async () => {
+      (container.querySelector('[data-testid="toolbar-pull-btn"]') as HTMLButtonElement).click();
+    });
+    await act(async () => {
+      (container.querySelector('[data-testid="toolbar-push-btn"]') as HTMLButtonElement).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="toolbar-manage-remotes-btn"]') as HTMLButtonElement
+      ).click();
+    });
+
+    expect(onPull).toHaveBeenCalledTimes(1);
+    expect(onPush).toHaveBeenCalledTimes(1);
+    expect(onManageRemotes).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it('shows spinning loading indicator and disables refresh button when loading', async () => {
     useRepositoryStore
       .getState()

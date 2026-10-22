@@ -2,7 +2,15 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import type { FileChange, FileChangeStatus } from '@git-graph/shared';
 import { Icon } from '../../components/ui/Icon';
 import { MenuItemRow } from '../menu/Menu';
-import { openFileAtRevisionInVsCode } from '../../messaging/messageRouter';
+import {
+  openDiffInVsCode,
+  openFileAtRevisionInVsCode,
+  requestCommitsPage,
+  requestOpenSubmodule,
+} from '../../messaging/messageRouter';
+import { useGraphStore } from '../../stores/graphStore';
+import { useSelectionStore } from '../../stores/selectionStore';
+import { t } from '../../i18n';
 
 export interface ChangedFilesProps {
   repositoryId?: string;
@@ -16,7 +24,10 @@ export interface ChangedFilesProps {
   onFilterTextChange?: (text: string) => void;
   onSelectFile: (file: FileChange) => void;
   onOpenDiffInVsCode?: (filePath: string, oldPath?: string) => void;
+  onViewFileAtRevision?: (filePath: string, commitSha?: string) => void;
+  onViewFileHistory?: (filePath: string) => void;
   onOpenFileInEditor?: (filePath: string) => void;
+  onOpenSubmodule?: (submodulePath: string) => void;
 }
 
 /**
@@ -152,14 +163,143 @@ const FileIcon: React.FC = () => (
   <Icon name="file" size={14} className="file-tree-icon file-icon" />
 );
 
+export interface FileActionButtonsProps {
+  file: FileChange;
+  commitSha?: string;
+  parentSha?: string;
+  repositoryId?: string;
+  onOpenDiffInVsCode?: (filePath: string, oldPath?: string) => void;
+  onViewFileAtRevision?: (filePath: string, commitSha?: string) => void;
+  onViewFileHistory?: (filePath: string) => void;
+  onOpenFileInEditor?: (filePath: string) => void;
+}
+
+export const FileActionButtons: React.FC<FileActionButtonsProps> = React.memo(
+  ({
+    file,
+    commitSha,
+    parentSha,
+    repositoryId,
+    onOpenDiffInVsCode,
+    onViewFileAtRevision,
+    onViewFileHistory,
+    onOpenFileInEditor,
+  }) => {
+    const handleViewDiff = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onOpenDiffInVsCode) {
+          onOpenDiffInVsCode(file.path, file.oldPath);
+        } else if (repositoryId && commitSha) {
+          openDiffInVsCode(repositoryId, commitSha, file.path, parentSha, file.oldPath);
+        }
+      },
+      [file.path, file.oldPath, onOpenDiffInVsCode, repositoryId, commitSha, parentSha],
+    );
+
+    const handleViewFileAtRevision = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onViewFileAtRevision) {
+          onViewFileAtRevision(file.path, commitSha);
+        } else if (repositoryId) {
+          openFileAtRevisionInVsCode(repositoryId, file.path, commitSha);
+        }
+      },
+      [file.path, commitSha, onViewFileAtRevision, repositoryId],
+    );
+
+    const handleViewFileHistory = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onViewFileHistory) {
+          onViewFileHistory(file.path);
+        } else {
+          useGraphStore.getState().setFilterPath(file.path);
+          useSelectionStore.getState().clearSelection();
+          requestCommitsPage();
+        }
+      },
+      [file.path, onViewFileHistory],
+    );
+
+    const handleOpenFileInEditor = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onOpenFileInEditor) {
+          onOpenFileInEditor(file.path);
+        } else if (repositoryId) {
+          openFileAtRevisionInVsCode(repositoryId, file.path);
+        }
+      },
+      [file.path, onOpenFileInEditor, repositoryId],
+    );
+
+    return (
+      <div className="file-actions" role="toolbar" aria-label="File actions">
+        <button
+          type="button"
+          className="file-action-btn"
+          onClick={handleViewDiff}
+          title="View Diff"
+          aria-label="View Diff"
+          data-testid={`file-action-view-diff-${file.path}`}
+        >
+          <Icon name="eye" size={13} />
+        </button>
+
+        <button
+          type="button"
+          className="file-action-btn"
+          onClick={handleViewFileAtRevision}
+          title="View File at this Revision"
+          aria-label="View File at this Revision"
+          data-testid={`file-action-view-file-${file.path}`}
+        >
+          <Icon name="view-file" size={13} />
+        </button>
+
+        <button
+          type="button"
+          className="file-action-btn"
+          onClick={handleViewFileHistory}
+          title="View File History"
+          aria-label="View File History"
+          data-testid={`file-action-view-history-${file.path}`}
+        >
+          <Icon name="commit" size={13} />
+        </button>
+
+        <button
+          type="button"
+          className="file-action-btn"
+          onClick={handleOpenFileInEditor}
+          title="Open File in Editor"
+          aria-label="Open File in Editor"
+          data-testid={`file-action-open-editor-${file.path}`}
+        >
+          <Icon name="open-file" size={13} />
+        </button>
+      </div>
+    );
+  },
+);
+FileActionButtons.displayName = 'FileActionButtons';
+
 interface TreeNodeProps {
   node: FileTreeNode;
   depth: number;
   selectedFilePath: string | null;
   collapsedFolders: Set<string>;
+  commitSha?: string;
+  parentSha?: string;
+  repositoryId?: string;
   onToggleFolder: (folderPath: string) => void;
   onSelectFile: (file: FileChange) => void;
   onOpenDiffInVsCode?: (filePath: string, oldPath?: string) => void;
+  onViewFileAtRevision?: (filePath: string, commitSha?: string) => void;
+  onViewFileHistory?: (filePath: string) => void;
+  onOpenFileInEditor?: (filePath: string) => void;
   onContextMenuFile?: (file: FileChange, e: React.MouseEvent | React.KeyboardEvent) => void;
 }
 
@@ -168,9 +308,15 @@ const TreeNodeItem: React.FC<TreeNodeProps> = ({
   depth,
   selectedFilePath,
   collapsedFolders,
+  commitSha,
+  parentSha,
+  repositoryId,
   onToggleFolder,
   onSelectFile,
   onOpenDiffInVsCode,
+  onViewFileAtRevision,
+  onViewFileHistory,
+  onOpenFileInEditor,
   onContextMenuFile,
 }) => {
   const isCollapsed = collapsedFolders.has(node.fullPath);
@@ -204,9 +350,15 @@ const TreeNodeItem: React.FC<TreeNodeProps> = ({
                 depth={depth + 1}
                 selectedFilePath={selectedFilePath}
                 collapsedFolders={collapsedFolders}
+                commitSha={commitSha}
+                parentSha={parentSha}
+                repositoryId={repositoryId}
                 onToggleFolder={onToggleFolder}
                 onSelectFile={onSelectFile}
                 onOpenDiffInVsCode={onOpenDiffInVsCode}
+                onViewFileAtRevision={onViewFileAtRevision}
+                onViewFileHistory={onViewFileHistory}
+                onOpenFileInEditor={onOpenFileInEditor}
                 onContextMenuFile={onContextMenuFile}
               />
             ))}
@@ -262,6 +414,16 @@ const TreeNodeItem: React.FC<TreeNodeProps> = ({
         )}
       </span>
 
+      {file.isSubmodule ? (
+        <span
+          className="file-submodule-badge"
+          data-testid={`file-submodule-${file.path}`}
+          title={t('submodule.badge')}
+        >
+          [{t('submodule.badge')}]
+        </span>
+      ) : null}
+
       {/* Hidden file path for exact full-path test assertions */}
       <span style={{ display: 'none' }} data-testid={`file-path-name-${file.path}`}>
         {file.path}
@@ -313,6 +475,17 @@ const TreeNodeItem: React.FC<TreeNodeProps> = ({
           ⧉
         </button>
       )}
+
+      <FileActionButtons
+        file={file}
+        commitSha={commitSha}
+        parentSha={parentSha}
+        repositoryId={repositoryId}
+        onOpenDiffInVsCode={onOpenDiffInVsCode}
+        onViewFileAtRevision={onViewFileAtRevision}
+        onViewFileHistory={onViewFileHistory}
+        onOpenFileInEditor={onOpenFileInEditor}
+      />
     </div>
   );
 };
@@ -320,7 +493,7 @@ const TreeNodeItem: React.FC<TreeNodeProps> = ({
 export const ChangedFiles: React.FC<ChangedFilesProps> = ({
   repositoryId,
   commitSha,
-  parentSha: _parentSha,
+  parentSha,
   fileChanges,
   selectedFilePath,
   viewMode = 'tree',
@@ -329,7 +502,10 @@ export const ChangedFiles: React.FC<ChangedFilesProps> = ({
   onFilterTextChange,
   onSelectFile,
   onOpenDiffInVsCode,
+  onViewFileAtRevision,
+  onViewFileHistory,
   onOpenFileInEditor,
+  onOpenSubmodule,
 }) => {
   const [internalFilterText, setInternalFilterText] = useState('');
   const filterText = externalFilterText !== undefined ? externalFilterText : internalFilterText;
@@ -471,12 +647,18 @@ export const ChangedFiles: React.FC<ChangedFilesProps> = ({
               depth={0}
               selectedFilePath={selectedFilePath}
               collapsedFolders={collapsedFolders}
+              commitSha={commitSha}
+              parentSha={parentSha}
+              repositoryId={repositoryId}
               onToggleFolder={handleToggleFolder}
               onSelectFile={(file) => {
                 onSelectFile(file);
                 onOpenDiffInVsCode?.(file.path, file.oldPath);
               }}
               onOpenDiffInVsCode={onOpenDiffInVsCode}
+              onViewFileAtRevision={onViewFileAtRevision}
+              onViewFileHistory={onViewFileHistory}
+              onOpenFileInEditor={onOpenFileInEditor}
               onContextMenuFile={handleContextMenuFile}
             />
           ))}
@@ -534,6 +716,16 @@ export const ChangedFiles: React.FC<ChangedFilesProps> = ({
                   )}
                 </span>
 
+                {file.isSubmodule ? (
+                  <span
+                    className="file-submodule-badge"
+                    data-testid={`file-submodule-${file.path}`}
+                    title={t('submodule.badge')}
+                  >
+                    [{t('submodule.badge')}]
+                  </span>
+                ) : null}
+
                 <span style={{ display: 'none' }} data-testid={`file-path-name-${file.path}`}>
                   {file.path}
                 </span>
@@ -582,6 +774,17 @@ export const ChangedFiles: React.FC<ChangedFilesProps> = ({
                     ⧉
                   </button>
                 )}
+
+                <FileActionButtons
+                  file={file}
+                  commitSha={commitSha}
+                  parentSha={parentSha}
+                  repositoryId={repositoryId}
+                  onOpenDiffInVsCode={onOpenDiffInVsCode}
+                  onViewFileAtRevision={onViewFileAtRevision}
+                  onViewFileHistory={onViewFileHistory}
+                  onOpenFileInEditor={onOpenFileInEditor}
+                />
               </div>
             );
           })}
@@ -605,10 +808,53 @@ export const ChangedFiles: React.FC<ChangedFilesProps> = ({
               if (onOpenFileInEditor) {
                 onOpenFileInEditor(file.path);
               } else if (repositoryId) {
+                openFileAtRevisionInVsCode(repositoryId, file.path);
+              }
+            }}
+          />
+          <MenuItemRow
+            id="view-file-at-revision"
+            label="View File at this Revision"
+            onClick={() => {
+              const file = fileContextMenu.file;
+              setFileContextMenu(null);
+              if (onViewFileAtRevision) {
+                onViewFileAtRevision(file.path, commitSha);
+              } else if (repositoryId) {
                 openFileAtRevisionInVsCode(repositoryId, file.path, commitSha);
               }
             }}
           />
+          <MenuItemRow
+            id="view-file-history"
+            label="View File History"
+            onClick={() => {
+              const file = fileContextMenu.file;
+              setFileContextMenu(null);
+              if (onViewFileHistory) {
+                onViewFileHistory(file.path);
+              } else {
+                useGraphStore.getState().setFilterPath(file.path);
+                useSelectionStore.getState().clearSelection();
+                requestCommitsPage();
+              }
+            }}
+          />
+          {fileContextMenu.file.isSubmodule ? (
+            <MenuItemRow
+              id="open-submodule-in-graph"
+              label={t('submodule.open')}
+              onClick={() => {
+                const file = fileContextMenu.file;
+                setFileContextMenu(null);
+                if (onOpenSubmodule) {
+                  onOpenSubmodule(file.path);
+                } else if (repositoryId) {
+                  requestOpenSubmodule({ repositoryId, path: file.path });
+                }
+              }}
+            />
+          ) : null}
           <MenuItemRow
             id="open-diff-in-editor"
             label="Open Diff in Editor"

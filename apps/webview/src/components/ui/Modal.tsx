@@ -1,5 +1,20 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Button, type ButtonVariant } from './Button';
+
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (element) => element.getAttribute('aria-hidden') !== 'true',
+  );
+}
 
 export interface ModalProps {
   isOpen: boolean;
@@ -29,6 +44,26 @@ export const Modal: React.FC<ModalProps> = ({
   dialogTestId,
   children,
 }) => {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const dialog = dialogRef.current;
+    if (dialog) {
+      const focusable = getFocusableElements(dialog);
+      (focusable[0] ?? dialog).focus();
+    }
+
+    return () => {
+      previousFocusRef.current?.focus?.();
+      previousFocusRef.current = null;
+    };
+  }, [isOpen]);
+
   if (!isOpen) {
     return null;
   }
@@ -45,6 +80,25 @@ export const Modal: React.FC<ModalProps> = ({
       }
       e.preventDefault();
       onConfirm();
+    } else if (e.key === 'Tab') {
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = getFocusableElements(dialog);
+      if (focusable.length === 0) {
+        e.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === dialog)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
   };
 
@@ -62,7 +116,7 @@ export const Modal: React.FC<ModalProps> = ({
       }}
       onKeyDown={handleKeyDown}
     >
-      <div className={dialogClassName} data-testid={dialogTestId}>
+      <div ref={dialogRef} className={dialogClassName} data-testid={dialogTestId} tabIndex={-1}>
         {children}
       </div>
     </div>

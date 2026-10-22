@@ -8,6 +8,13 @@ import type {
   RepositoryRefsResult,
   StashEntry,
   WorktreeStatus,
+  RemoteInfo,
+  ReflogEntry,
+  BlameResult,
+  LineHistoryResult,
+  RebasePlanEntry,
+  GitWorktreeInfo,
+  SubmoduleInfo,
 } from '@git-graph/shared';
 import { GitCliClient } from '../client/GitCliClient';
 import type { GitClient, GitExecutionOptions } from '../client/GitClient';
@@ -20,6 +27,11 @@ import {
   type WorktreeDiffQueryOptions,
 } from '../queries/DiffQuery';
 import { RefQuery, type RefQueryOptions } from '../queries/RefQuery';
+import { BlameQuery, type BlameQueryOptions } from '../queries/BlameQuery';
+import { LineHistoryQuery } from '../queries/LineHistoryQuery';
+import { RemoteQuery } from '../queries/RemoteQuery';
+import { ReflogQuery } from '../queries/ReflogQuery';
+import { RebasePlanQuery } from '../queries/RebasePlanQuery';
 import {
   StashQuery,
   WorktreeQuery,
@@ -27,6 +39,8 @@ import {
   type WorktreeCommitResult,
   type WorktreeDiscardOptions,
 } from '../queries/WorktreeQuery';
+import { GitWorktreeQuery, type GitWorktreeAddOptions } from '../queries/GitWorktreeQuery';
+import { SubmoduleQuery } from '../queries/SubmoduleQuery';
 import { RepositoryLocator } from './RepositoryLocator';
 
 export interface GitRepositoryOptions {
@@ -35,7 +49,14 @@ export interface GitRepositoryOptions {
   commitDetailsQuery?: CommitDetailsQuery;
   diffQuery?: DiffQuery;
   refQuery?: RefQuery;
+  remoteQuery?: RemoteQuery;
+  reflogQuery?: ReflogQuery;
+  rebasePlanQuery?: RebasePlanQuery;
+  blameQuery?: BlameQuery;
+  lineHistoryQuery?: LineHistoryQuery;
   worktreeQuery?: WorktreeQuery;
+  gitWorktreeQuery?: GitWorktreeQuery;
+  submoduleQuery?: SubmoduleQuery;
   stashQuery?: StashQuery;
   locator?: RepositoryLocator;
   knownRemotes?: string[];
@@ -52,7 +73,14 @@ export class GitRepository {
   private readonly _commitDetailsQuery: CommitDetailsQuery;
   private readonly _diffQuery: DiffQuery;
   private readonly _refQuery: RefQuery;
+  private readonly _remoteQuery: RemoteQuery;
+  private readonly _reflogQuery: ReflogQuery;
+  private readonly _rebasePlanQuery: RebasePlanQuery;
+  private readonly _blameQuery: BlameQuery;
+  private readonly _lineHistoryQuery: LineHistoryQuery;
   private readonly _worktreeQuery: WorktreeQuery;
+  private readonly _gitWorktreeQuery: GitWorktreeQuery;
+  private readonly _submoduleQuery: SubmoduleQuery;
   private readonly _stashQuery: StashQuery;
   private _knownRemotes?: string[];
 
@@ -64,7 +92,17 @@ export class GitRepository {
       options?.commitDetailsQuery ?? new CommitDetailsQuery({ client: this._client });
     this._diffQuery = options?.diffQuery ?? new DiffQuery({ client: this._client });
     this._refQuery = options?.refQuery ?? new RefQuery({ client: this._client });
+    this._remoteQuery = options?.remoteQuery ?? new RemoteQuery({ client: this._client });
+    this._reflogQuery = options?.reflogQuery ?? new ReflogQuery({ client: this._client });
+    this._rebasePlanQuery =
+      options?.rebasePlanQuery ?? new RebasePlanQuery({ client: this._client });
+    this._blameQuery = options?.blameQuery ?? new BlameQuery({ client: this._client });
+    this._lineHistoryQuery =
+      options?.lineHistoryQuery ?? new LineHistoryQuery({ client: this._client });
     this._worktreeQuery = options?.worktreeQuery ?? new WorktreeQuery({ client: this._client });
+    this._gitWorktreeQuery =
+      options?.gitWorktreeQuery ?? new GitWorktreeQuery({ client: this._client });
+    this._submoduleQuery = options?.submoduleQuery ?? new SubmoduleQuery({ client: this._client });
     this._stashQuery = options?.stashQuery ?? new StashQuery({ client: this._client });
     this._knownRemotes = options?.knownRemotes;
   }
@@ -162,6 +200,21 @@ export class GitRepository {
     }
 
     return ['origin'];
+  }
+
+  public async getRemoteDetails(signal?: AbortSignal): Promise<RemoteInfo[]> {
+    return this._remoteQuery.list(this.rootPath, signal);
+  }
+
+  public async listReflog(limit = 20, signal?: AbortSignal): Promise<ReflogEntry[]> {
+    return this._reflogQuery.list(this.rootPath, limit, signal);
+  }
+
+  /**
+   * Builds an interactive rebase plan for commits between the given target and HEAD.
+   */
+  public async getRebasePlan(onto: string, signal?: AbortSignal): Promise<RebasePlanEntry[]> {
+    return this._rebasePlanQuery.list(this.rootPath, onto, signal);
   }
 
   /**
@@ -323,6 +376,35 @@ export class GitRepository {
   }
 
   /**
+   * Retrieves line-by-line blame metadata for a file at an optional revision.
+   */
+  public async getBlame(
+    filePath: string,
+    revision?: string,
+    options?: Omit<BlameQueryOptions, 'revision'>,
+  ): Promise<BlameResult> {
+    return this._blameQuery.query(this.rootPath, filePath, {
+      ...options,
+      ...(revision ? { revision } : {}),
+      repositoryId: this.id,
+    });
+  }
+
+  /**
+   * Retrieves the commit history for a line range in a file.
+   */
+  public async getLineHistory(
+    filePath: string,
+    startLine: number,
+    endLine = startLine,
+    signal?: AbortSignal,
+  ): Promise<LineHistoryResult> {
+    return this._lineHistoryQuery.query(this.rootPath, filePath, startLine, endLine, {
+      ...(signal ? { signal } : {}),
+    });
+  }
+
+  /**
    * Queries the working tree and index state, including staged/unstaged files.
    */
   public async getWorktreeStatus(): Promise<WorktreeStatus> {
@@ -355,6 +437,34 @@ export class GitRepository {
    */
   public async createCommit(options: WorktreeCommitOptions): Promise<WorktreeCommitResult> {
     return this._worktreeQuery.commit(this.rootPath, options);
+  }
+
+  /**
+   * Lists linked Git worktrees for this repository.
+   */
+  public async listWorktrees(): Promise<GitWorktreeInfo[]> {
+    return this._gitWorktreeQuery.list(this.rootPath);
+  }
+
+  /**
+   * Creates a linked worktree and returns the refreshed worktree list.
+   */
+  public async addWorktree(options: GitWorktreeAddOptions): Promise<GitWorktreeInfo[]> {
+    return this._gitWorktreeQuery.add(this.rootPath, options);
+  }
+
+  /**
+   * Removes a linked worktree and returns the refreshed worktree list.
+   */
+  public async removeWorktree(worktreePath: string, force = false): Promise<GitWorktreeInfo[]> {
+    return this._gitWorktreeQuery.remove(this.rootPath, worktreePath, force);
+  }
+
+  /**
+   * Lists configured submodules with their current checkout state.
+   */
+  public async listSubmodules(): Promise<SubmoduleInfo[]> {
+    return this._submoduleQuery.list(this.rootPath);
   }
 
   /**
