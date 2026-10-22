@@ -826,3 +826,30 @@ Toàn bộ các mục tiêu đặt ra trong lộ trình từ v0.3.x đến v1.0.
 
 **XÁC NHẬN NGHIỆM THU: CHÍNH THỨC ĐẠT CHUẨN PHÁT HÀNH PHIÊN BẢN 1.0.0 (PRODUCTION-GRADE).**
 
+---
+
+### 8.6. Phiên Bản 1.1.0 — Tối Ưu Hóa Trải Nghiệm & Đồng Bộ Trạng Thái Git (Post-v1.0.0 Refinements)
+
+> **Ngày nghiệm thu:** 2026-10-23  
+> **Người nghiệm thu:** Antigravity Engineering Agent  
+> **Phiên bản release:** `1.1.0` (Minor Release)  
+> **Mục tiêu:** Tinh giản quy trình tương tác thường nhật (Fetch 1-click, lưu cấu hình merge fast-forward), hoàn thiện cơ chế đồng bộ bộ nhớ đệm Git index (`syncAndRefreshGit`), hỗ trợ phân nhánh khi working tree dirty, và tăng cường độ ổn định luồng invalidation.
+
+#### 1. Hạng Mục Triển Khai Kỹ Thuật
+
+- **Direct 1-Click Toolbar Fetch:**
+  - Loại bỏ hộp thoại trung gian `FetchDialog` khi fetch từ thanh công cụ, kích hoạt trực tiếp `git fetch --prune` trên toàn bộ remotes kèm toast thông báo trạng thái nhẹ nhàng.
+- **Merge Fast-Forward Strategy Persistence:**
+  - Tích hợp lớp lưu trữ trạng thái người dùng (`persistence.ts`) vào `MergeDialog`, tự động ghi nhớ và khôi phục lựa chọn `--ff`, `--no-ff`, hoặc `--ff-only` qua các phiên làm việc.
+- **Đồng Bộ Bộ Đệm Git Index & SCM Refresh (`syncAndRefreshGit`):**
+  - Xây dựng tiện ích tự động thực thi `git update-index -q --refresh` để cập nhật stat cache của Git index, ngăn ngừa triệt để hiện tượng báo dirty ảo sau các thao tác merge/checkout/commit.
+  - Tự động gọi lệnh VS Code nội bộ `vscode.commands.executeCommand('git.refresh')` với cơ chế 2-pass (ngay lập tức và trễ 150ms) sau mọi thao tác thay đổi trạng thái repo.
+- **Hỗ Trợ Tạo & Checkout Branch Khi Working Tree Chưa Commit:**
+  - Nới lỏng preflight check `requireCleanWorktree` trong `createBranch`, cho phép tạo và checkout nhánh mới linh hoạt ngay cả khi working tree đang có file sửa đổi.
+- **Chuẩn Hóa Hành Vi Status Bar:**
+  - Đơn giản hóa hành vi nhấp chuột trên Status Bar item: luôn mở Git Graph view (`gitGraph.openGraph`) một cách nhất quán, đồng thời duy trì thông số ahead/behind (`↑ ahead ↓ behind`) trên nhãn và tooltip.
+- **Debounce Invalidation với Trailing Execution & Refs Preservation:**
+  - Bổ sung bộ đếm thời gian trailing (350ms throttle window) trong `messageRouter` để không làm thất lạc sự kiện invalidation cuối cùng khi hệ thống file phát sinh hàng loạt thay đổi liên tiếp.
+  - Khắc phục lỗi reset cursor hoặc loại bỏ refs trong `graphStore` khi nhận dữ liệu làm mới ngầm (`preserveCommits`).
+
+

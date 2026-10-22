@@ -7,7 +7,7 @@ Git Graph publishes from GitHub Actions when a `v*` tag is pushed. The workflow 
 1. Update versions in every workspace and the lockfile:
 
    ```sh
-   npm version 1.0.1 --workspaces --include-workspace-root --no-git-tag-version
+   npm version 1.1.0 --workspaces --include-workspace-root --no-git-tag-version
    ```
 
 2. Update `CHANGELOG.md` and `apps/extension/CHANGELOG.md` with the release notes.
@@ -36,8 +36,8 @@ Git Graph publishes from GitHub Actions when a `v*` tag is pushed. The workflow 
 6. Commit the release changes, then create and push a tag:
 
    ```sh
-   git tag v1.0.1
-   git push origin v1.0.1
+   git tag v1.1.0
+   git push origin v1.1.0
    ```
 
 ## Local packaging

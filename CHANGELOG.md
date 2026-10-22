@@ -2,6 +2,37 @@
 
 All notable changes to Git Graph are documented in this file.
 
+## 1.1.0 - 2026-10-23
+
+### Added
+
+- **Direct 1-click Fetch from toolbar:**
+  - Removed the intermediate `FetchDialog` modal to provide instant synchronization.
+  - Clicking the Fetch button on the toolbar immediately executes `git fetch --prune` across all remotes and displays a non-intrusive success toast upon completion.
+
+- **Merge fast-forward mode persistence:**
+  - `MergeDialog` now persists and restores the developer's selected fast-forward strategy (`--ff`, `--no-ff`, `--ff-only`) across dialog openings and workspace sessions via the webview persistence layer.
+
+- **Git index cache synchronization & VS Code SCM refresh (`syncAndRefreshGit`):**
+  - Added utility that automatically invokes `git update-index -q --refresh` to reconcile the Git index stat cache, preventing false-positive dirty status after operations.
+  - Automatically triggers VS Code's native `git.refresh` command upon graph refresh requests and after mutating Git operations (merge, checkout, etc.) with a timed second pass.
+
+- **Uncommitted changes branch creation:**
+  - Relaxed preflight checks in branch creation and checkout (`createBranch`), allowing branches to be created and checked out seamlessly even when uncommitted changes exist in the working tree.
+
+### Changed
+
+- **Consistent status bar navigation:**
+  - Clicking the Git Graph status bar item now always opens the Git Graph view (`gitGraph.openGraph`), while continuing to display live branch names and ahead/behind commit indicators (`↑ ahead ↓ behind`) in both label and tooltip.
+
+### Fixed
+
+- **Debounced filesystem invalidation with trailing execution:**
+  - Introduced a trailing timer in the webview `messageRouter` during filesystem invalidation events (350ms window) so rapid successive Git file events do not discard final repository status updates.
+
+- **Commit refs preservation on background refresh:**
+  - Fixed an issue in `graphStore` where background graph refresh requests with `preserveCommits` could misinterpret pagination cursors and discard updated branch/tag references.
+
 ## 1.0.0 - 2026-10-22
 
 ### Added

@@ -14,7 +14,15 @@
 
 **Git Graph** is a high-performance, developer-friendly VS Code extension for exploring Git histories in an interactive graph. It discovers repositories across your workspace, renders branches, tags, merge topologies, worktrees, submodules, and working tree changes, and exposes safe local Git operations directly from a responsive webview UI — with no telemetry and no repository data leaving your machine.
 
-## What's new in 1.0.0
+## What's new in 1.1.0
+
+- **Direct 1-click Fetch** — toolbar fetch button executes `git fetch --prune` across all remotes immediately with non-intrusive progress and success toasts, removing unnecessary confirmation modals.
+- **Fast-forward strategy memory** — `MergeDialog` persists and remembers your preferred merge mode (`--ff`, `--no-ff`, `--ff-only`) across sessions.
+- **Git index cache synchronization & VS Code SCM refresh** — automatically reconciles the Git index cache (`update-index -q --refresh`) and triggers native `git.refresh` after Git operations, preventing false-positive dirty status.
+- **Branching with uncommitted changes** — create and checkout new branches smoothly without being blocked by dirty working tree files.
+- **Consistent status bar navigation** — clicking the status bar item always opens Git Graph while displaying live branch ahead/behind status (`↑ ahead ↓ behind`).
+
+## Highlights from 1.0.0
 
 - **Production-grade E2E coverage** — ten scenarios (E1–E10) exercised both in a deterministic harness and in a real VS Code host via `@vscode/test-electron`.
 - **500K-commit performance hardening** — explicit render/page/layout/search/memory/scroll budgets, a 100K-commit paging memory profile, and a checked-in benchmark report with a v0.2.1 baseline.
@@ -56,10 +64,11 @@ See [CHANGELOG.md](https://github.com/thaoanhhaa1/git-graph/blob/master/CHANGELO
 - **Staged vs unstaged split** for modified (`M`), added (`A`), deleted (`D`), renamed (`R`), and untracked (`?`) files.
 - **One-click stage/unstage/discard** for individual files or the whole worktree, with destructive-action confirmation.
 - **Direct commit form** with summary, multiline description, and amend mode that pre-fills the previous commit.
+- **Branching with uncommitted changes** — create and switch branches smoothly even when the working tree has uncommitted modifications.
 - **Stash lifecycle** — save (including untracked), list, apply, pop, and drop.
 
 ### 3. Merge, rebase, reset & sequencer workflows
-- **Merge dialog** with fast-forward modes (`--ff`, `--no-ff`, `--ff-only`) and squash support.
+- **Merge dialog** with fast-forward modes (`--ff`, `--no-ff`, `--ff-only`), persistent strategy memory across dialog sessions, and squash support.
 - **Interactive rebase** with drag-and-drop ordering and reword/edit/squash/fixup/drop actions.
 - **Published-branch protection** warning before rebasing or force-pushing commits already on a remote.
 - **Reset dialog** with soft, mixed, and hard modes plus prominent destructive confirmation.
@@ -68,9 +77,9 @@ See [CHANGELOG.md](https://github.com/thaoanhhaa1/git-graph/blob/master/CHANGELO
 - **Reflog-backed undo** for the last HEAD-changing operation.
 
 ### 4. Remote operations & sync
-- **Fetch, Pull, and Push dialogs** with prune, strategy (`merge`/`rebase`/`ff-only`), autostash, force-with-lease, tags, and upstream tracking.
+- **Toolbar Fetch & Remote dialogs** — instant 1-click Fetch with prune directly from the toolbar, plus Pull and Push dialogs with strategy (`merge`/`rebase`/`ff-only`), autostash, force-with-lease, tags, and upstream tracking.
 - **Remote management** — add, remove, rename, and update URLs.
-- **Ahead/behind status** in the status bar and repository sync status messages.
+- **Ahead/behind status & navigation** — status bar item and sync indicators display live ahead/behind counters, with single-click navigation directly to the graph.
 
 ### 5. File history, blame & line history
 - **Range diff** by `Ctrl`/`Cmd` + Click on two commits.
@@ -172,6 +181,7 @@ Git Graph is a modular TypeScript monorepo designed for scale:
 - **Bounded LRU caches:** commit details capped at **500** entries, diffs capped at **100**.
 - **O(1) lookups:** hash/ref maps replace render-path array scans.
 - **Incremental graph layout:** `GraphContinuation` avoids recomputing prior pages.
+- **Index cache synchronization (`syncAndRefreshGit`):** automatically reconciles Git index stat cache (`update-index -q --refresh`) and syncs VS Code's internal Git provider.
 - **Zero inline allocations:** granular Zustand selectors and memoized callbacks prevent cascade re-renders.
 - **Measured budgets:** initial render <200ms, page load <100ms, graph layout <50ms, search <50ms, scroll frame <16ms. See [the benchmark report](https://github.com/thaoanhhaa1/git-graph/blob/master/docs/benchmark-report.md).
 

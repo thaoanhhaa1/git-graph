@@ -2,7 +2,7 @@
   "name": "cts-git-graph",
   "displayName": "Git Graph - CTS",
   "description": "High-performance interactive Git graph, blame, rebase, worktrees, and remote operations for VS Code",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "CTS",
   "icon": "resources/icon.png",
   "license": "MIT",
