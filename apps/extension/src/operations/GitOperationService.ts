@@ -26,6 +26,7 @@ import {
 } from '@git-graph/git-core';
 import type { RepositoryManager } from '../repositories/RepositoryManager';
 import type { RefreshCoordinator } from '../application/RefreshCoordinator';
+import { syncAndRefreshGit } from '../application/vsCodeGitRefresh';
 import { OperationQueue } from './OperationQueue';
 import { OperationPreflight, type PreflightRequirements } from './OperationPreflight';
 import { t } from '../i18n/l10n';
@@ -787,6 +788,8 @@ export class GitOperationService implements vscode.Disposable {
             };
           }
 
+          await syncAndRefreshGit(repository, { signal });
+
           try {
             await this._repositoryManager.refresh();
           } catch {
@@ -810,6 +813,7 @@ export class GitOperationService implements vscode.Disposable {
           this._emitResult(successResult);
           return successResult;
         } catch (err: unknown) {
+          await syncAndRefreshGit(repository);
           this._refreshCoordinator.unmute(options.repositoryId);
           const durationMs = Date.now() - startTime;
           const failureResult = createOperationFailureResult(

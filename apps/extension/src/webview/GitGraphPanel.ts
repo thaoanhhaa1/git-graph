@@ -87,6 +87,7 @@ import {
 import { GitRepository } from '@git-graph/git-core';
 import { RepositoryManager } from '../repositories/RepositoryManager';
 import { RefreshCoordinator } from '../application/RefreshCoordinator';
+import { syncAndRefreshGit } from '../application/vsCodeGitRefresh';
 import { CommitDetailsController } from '../application/CommitDetailsController';
 import { RepositoryWatcher } from '../watchers/RepositoryWatcher';
 import { GitRevisionContentProvider } from './GitRevisionContentProvider';
@@ -558,8 +559,14 @@ export class GitGraphPanel implements vscode.Disposable {
         this._repositoryManager.setActiveRepository(envelope.payload.repositoryId);
         break;
       }
-      case 'graph.refresh.request':
-        this._refreshCoordinator.requestRefresh(envelope.payload?.repositoryId, {
+      case 'graph.refresh.request': {
+        const repoId = envelope.payload?.repositoryId;
+        const targetRepo = repoId
+          ? this._repositoryManager.getRepository(repoId)
+          : this._repositoryManager.getActiveGitRepository();
+        await syncAndRefreshGit(targetRepo);
+
+        this._refreshCoordinator.requestRefresh(repoId, {
           hard: envelope.payload?.hard,
         });
         if (envelope.payload?.hard) {
@@ -569,6 +576,7 @@ export class GitGraphPanel implements vscode.Disposable {
           await this._repositoryManager.refresh();
         }
         break;
+      }
       case 'commits.page.request':
         await this._handleCommitsPageRequest(envelope.payload, envelope.id);
         break;

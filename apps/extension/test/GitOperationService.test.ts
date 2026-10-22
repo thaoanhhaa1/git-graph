@@ -831,6 +831,10 @@ describe('GitOperationService', () => {
       ['merge', '--no-ff', '--no-edit', '--end-of-options', targetCommitSha],
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
+    expect(mockRepo.exec).toHaveBeenCalledWith(
+      ['update-index', '-q', '--refresh'],
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it('squash merges a resolved target into the current branch with --squash', async () => {

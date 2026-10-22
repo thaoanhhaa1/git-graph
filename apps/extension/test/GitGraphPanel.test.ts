@@ -382,6 +382,7 @@ describe('GitGraphPanel', () => {
   });
 
   it('handles graph.refresh.request by requesting coordinator refresh and posting graph.invalidated', async () => {
+    const execCommandSpy = vi.spyOn(vscode.commands, 'executeCommand').mockResolvedValue(undefined);
     const panel = GitGraphPanel.createOrShow(extensionUri);
     const postSpy = vi.spyOn(panel.panel.webview, 'postMessage');
     const mockWebview = panel.panel.webview as unknown as MockWebview;
@@ -401,6 +402,7 @@ describe('GitGraphPanel', () => {
         payload: { repositoryId: 'repo-refreshed' },
       }),
     );
+    expect(execCommandSpy).toHaveBeenCalledWith('git.refresh');
   });
 
   it('discards commits.page.result if repository was invalidated while query was executing', async () => {
