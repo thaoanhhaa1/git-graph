@@ -263,7 +263,7 @@
     "@git-graph/shared": "*"
   },
   "devDependencies": {
-    "@types/node": "^20.14.0",
+    "@types/node": "^26.6.5",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^3.1.0",
     "typescript": "^5.5.4",
