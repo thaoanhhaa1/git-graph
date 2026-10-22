@@ -43,7 +43,7 @@
     "benchmark:baseline": "npm run build && node scripts/benchmark.mjs --sizes=1000,10000,100000,500000 --repeat=1 --save-baseline --output=docs/benchmark-report.baseline.json"
   },
   "devDependencies": {
-    "@eslint/js": "^9.9.0",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^20.14.0",
     "@vscode/test-electron": "^3.1.0",
     "eslint": "^9.9.0",
