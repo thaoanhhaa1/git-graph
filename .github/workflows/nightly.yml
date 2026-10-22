@@ -58,13 +58,13 @@ jobs:
           cp dist/*.vsix dist/cts-git-graph-nightly.vsix
 
       - name: Upload VSIX Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: git-graph-nightly-vsix
           path: dist/*.vsix
 
       - name: Upload benchmark report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: git-graph-benchmark-report
           path: |
