@@ -13,7 +13,7 @@
     "@git-graph/shared": "*"
   },
   "devDependencies": {
-    "@types/node": "^20.14.0",
+    "@types/node": "^26.6.5",
     "typescript": "^5.5.4",
     "vitest": "^2.0.5"
   }
