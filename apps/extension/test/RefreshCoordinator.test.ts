@@ -182,4 +182,25 @@ describe('RefreshCoordinator', () => {
     expect(events.length).toBe(1);
     expect(events[0]?.repositoryId).toBe('repo-muted');
   });
+
+  it('suppresses filesystem echo invalidations occurring shortly after operation invalidation', () => {
+    vi.useRealTimers();
+    coordinator = new RefreshCoordinator();
+    const events: InvalidationEvent[] = [];
+    coordinator.onDidInvalidate((e) => events.push(e));
+
+    // 1. Operation invalidation fires
+    coordinator.invalidate('repo-op', 'operation-branch-create');
+    expect(events).toHaveLength(1);
+    expect(events[0]?.reason).toBe('operation-branch-create');
+
+    // 2. Lingering filesystem watcher debounce fires shortly after
+    coordinator.handleRepositoryChange({
+      repositoryId: 'repo-op',
+      gitDir: '/path/.git',
+      reason: 'fs-create',
+    });
+    // Should be ignored to avoid invalidating the in-flight query triggered by the operation
+    expect(events).toHaveLength(1);
+  });
 });

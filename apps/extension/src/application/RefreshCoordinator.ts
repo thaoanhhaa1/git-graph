@@ -94,6 +94,9 @@ export class RefreshCoordinator implements vscode.Disposable {
   public invalidate(repositoryId?: string, reason: InvalidationReason = 'fs-change'): number {
     let nextGen: number;
     if (repositoryId) {
+      if (reason.startsWith('operation-')) {
+        this._lastOperationInvalidations.set(repositoryId, Date.now());
+      }
       const current = this.getGeneration(repositoryId);
       nextGen = current + 1;
       this._generations.set(repositoryId, nextGen);
@@ -121,6 +124,7 @@ export class RefreshCoordinator implements vscode.Disposable {
   }
 
   private readonly _mutedRepositories = new Map<string, number>();
+  private readonly _lastOperationInvalidations = new Map<string, number>();
 
   /**
    * Temporarily mutes filesystem/background invalidations for a repository during an active Git operation.
@@ -155,6 +159,10 @@ export class RefreshCoordinator implements vscode.Disposable {
    */
   public handleRepositoryChange(event: RepositoryChangeEvent): void {
     if (this.isMuted(event.repositoryId)) {
+      return;
+    }
+    const lastOpTime = this._lastOperationInvalidations.get(event.repositoryId);
+    if (lastOpTime && Date.now() - lastOpTime < 300) {
       return;
     }
     this.invalidate(event.repositoryId, event.reason);
@@ -246,6 +254,7 @@ export class RefreshCoordinator implements vscode.Disposable {
     }
     this._inFlightQueries.clear();
     this._generations.clear();
+    this._lastOperationInvalidations.clear();
     this._onDidInvalidate.dispose();
   }
 }

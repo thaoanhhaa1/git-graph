@@ -79,7 +79,11 @@ describe('graphStore', () => {
     });
   });
 
-  const makeCommit = (sha: string, subject = 'test commit'): Commit => ({
+  const makeCommit = (
+    sha: string,
+    subject = 'test commit',
+    overrides?: Partial<Commit>,
+  ): Commit => ({
     sha,
     shortSha: sha.slice(0, 7),
     parents: [],
@@ -97,6 +101,7 @@ describe('graphStore', () => {
     },
     subject,
     refs: [],
+    ...overrides,
   });
 
   it('initializes with clean default state', () => {
@@ -220,6 +225,48 @@ describe('graphStore', () => {
     expect(state.cursor).toBe('cursor-2');
     expect(state.hasMore).toBe(false);
     expect(state.isLoadingMore).toBe(false);
+  });
+
+  it('updates commit refs on refresh instead of discarding incoming commits when cursor already exists', () => {
+    const c1 = makeCommit('c111111111111111111111111111111111111111', 'initial commit', {
+      refs: [],
+    });
+    useGraphStore.getState().startLoadingPage({ repositoryId: 'repo-1' });
+    useGraphStore.getState().receiveCommitsPage({
+      repositoryId: 'repo-1',
+      page: { commits: [c1], cursor: 'cursor-1', hasMore: true },
+    });
+    expect(useGraphStore.getState().commits[0]?.refs).toEqual([]);
+
+    // Branch created at c1; background refresh with preserveCommits starts
+    const { requestId, generation } = useGraphStore.getState().startLoadingPage({
+      repositoryId: 'repo-1',
+      preserveCommits: true,
+    });
+
+    const c1WithBranch = makeCommit('c111111111111111111111111111111111111111', 'initial commit', {
+      refs: [
+        {
+          name: 'feature-awesome',
+          fullName: 'refs/heads/feature-awesome',
+          target: 'c111111111111111111111111111111111111111',
+          kind: 'localBranch',
+        },
+      ],
+    });
+
+    const accepted = useGraphStore.getState().receiveCommitsPage({
+      repositoryId: 'repo-1',
+      page: { commits: [c1WithBranch], cursor: 'cursor-1', hasMore: true },
+      requestId,
+      generation,
+    });
+
+    expect(accepted).toBe(true);
+    const updatedCommits = useGraphStore.getState().commits;
+    expect(updatedCommits).toHaveLength(1);
+    expect(updatedCommits[0]?.refs).toHaveLength(1);
+    expect(updatedCommits[0]?.refs[0]?.name).toBe('feature-awesome');
   });
 
   it('discards stale response from older generation', () => {

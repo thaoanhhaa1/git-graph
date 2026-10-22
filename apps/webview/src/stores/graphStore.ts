@@ -182,9 +182,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
     const isAppending =
       (isChunkSequence && !isFirstChunk) ||
-      (options.isAppend !== undefined
-        ? options.isAppend
-        : state.isLoadingMore || (state.commits.length > 0 && Boolean(state.cursor)));
+      (options.isAppend !== undefined ? options.isAppend : state.isLoadingMore);
 
     let nextCommits: Commit[];
 
@@ -215,7 +213,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     if (isLastChunk) {
       set({
         commits: nextCommits,
-        cursor: options.page.cursor ?? state.cursor,
+        cursor: options.page.cursor ?? (state.isLoadingMore ? state.cursor : undefined),
         hasMore: options.page.hasMore,
         isLoading: false,
         isLoadingMore: false,

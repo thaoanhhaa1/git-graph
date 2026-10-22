@@ -786,6 +786,44 @@ describe('messageRouter', () => {
       expect(commitRequests).toHaveLength(1);
     });
 
+    it('executes trailing refresh after throttle delay so no invalidation is permanently dropped', () => {
+      vi.useFakeTimers();
+      try {
+        useRepositoryStore
+          .getState()
+          .setRepositories([{ id: 'repo-1', name: 'Repo 1', path: '/r1' }]);
+        postedMessages = [];
+
+        const msg1: GraphInvalidatedMessage = {
+          protocolVersion: 1,
+          id: 'inv-1',
+          type: 'graph.invalidated',
+          payload: { repositoryId: 'repo-1' },
+        };
+        const msg2: GraphInvalidatedMessage = {
+          protocolVersion: 1,
+          id: 'inv-2',
+          type: 'graph.invalidated',
+          payload: { repositoryId: 'repo-1' },
+        };
+
+        handleIncomingMessage(msg1);
+        expect(postedMessages.filter((m) => m.type === 'commits.page.request')).toHaveLength(1);
+
+        // Second message within 350ms
+        vi.advanceTimersByTime(100);
+        handleIncomingMessage(msg2);
+        expect(postedMessages.filter((m) => m.type === 'commits.page.request')).toHaveLength(1);
+
+        // Trailing timer fires
+        vi.advanceTimersByTime(300);
+        expect(postedMessages.filter((m) => m.type === 'commits.page.request')).toHaveLength(2);
+      } finally {
+        resetInvalidationThrottle();
+        vi.useRealTimers();
+      }
+    });
+
     it('resets isFetching when operation.result is received', () => {
       useGraphStore.getState().setIsFetching(true);
       expect(useGraphStore.getState().isFetching).toBe(true);

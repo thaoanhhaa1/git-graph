@@ -131,7 +131,13 @@ export function requestCommitsPage(options: RequestCommitsOptions = {}): string 
   }
 
   const configuredPageSize = useConfigStore.getState().config.pageSize ?? DEFAULT_PAGE_SIZE;
-  const resolvedLimit = clampPageSize(options.limit ?? configuredPageSize);
+  const currentCommitsCount = graphStore.commits.length;
+  const resolvedLimit = clampPageSize(
+    options.limit ??
+      (options.refresh && currentCommitsCount > configuredPageSize
+        ? currentCommitsCount
+        : configuredPageSize),
+  );
 
   const startResult = graphStore.startLoadingPage({
     repositoryId,
@@ -943,10 +949,15 @@ export function requestReset(
 
 let lastInvalidationTime = 0;
 let lastInvalidatedRepoId: string | null = null;
+let invalidationTrailingTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function resetInvalidationThrottle(): void {
   lastInvalidationTime = 0;
   lastInvalidatedRepoId = null;
+  if (invalidationTrailingTimer) {
+    clearTimeout(invalidationTrailingTimer);
+    invalidationTrailingTimer = null;
+  }
 }
 
 /**
@@ -1067,18 +1078,39 @@ export function routeExtensionMessage(envelope: ExtensionToWebviewMessage): void
       const activeRepoId = useRepositoryStore.getState().activeRepositoryId;
       if (!repositoryId || (activeRepoId && repositoryId === activeRepoId)) {
         if (activeRepoId) {
+          const triggerRefresh = (repoId: string) => {
+            const worktreeRepoId = useWorktreeStore.getState().repositoryId;
+            if (worktreeRepoId === repoId) {
+              requestWorktreeStatus(repoId);
+              requestStashList(repoId);
+            }
+            requestCommitsPage({ repositoryId: repoId, refresh: true });
+          };
+
           const now = Date.now();
           if (lastInvalidatedRepoId === activeRepoId && now - lastInvalidationTime < 350) {
+            if (invalidationTrailingTimer) {
+              clearTimeout(invalidationTrailingTimer);
+            }
+            const delay = Math.max(50, 350 - (now - lastInvalidationTime));
+            invalidationTrailingTimer = setTimeout(() => {
+              invalidationTrailingTimer = null;
+              lastInvalidationTime = Date.now();
+              const currentActiveId = useRepositoryStore.getState().activeRepositoryId;
+              if (currentActiveId) {
+                triggerRefresh(currentActiveId);
+              }
+            }, delay);
             break;
+          }
+
+          if (invalidationTrailingTimer) {
+            clearTimeout(invalidationTrailingTimer);
+            invalidationTrailingTimer = null;
           }
           lastInvalidationTime = now;
           lastInvalidatedRepoId = activeRepoId;
-          const worktreeRepoId = useWorktreeStore.getState().repositoryId;
-          if (worktreeRepoId === activeRepoId) {
-            requestWorktreeStatus(activeRepoId);
-            requestStashList(activeRepoId);
-          }
-          requestCommitsPage({ repositoryId: activeRepoId, refresh: true });
+          triggerRefresh(activeRepoId);
         }
       }
       break;
