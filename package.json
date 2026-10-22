@@ -34,6 +34,7 @@
     "test:e2e": "npm run --workspace=apps/extension --if-present test:e2e",
     "test:e2e:host": "npm run build && node scripts/e2e/run-vscode-e2e.mjs",
     "package": "npm run build && npm run prepare:vsix && npm run --workspace=apps/extension package",
+    "package:nightly": "npm run build && npm run prepare:vsix && npm run --workspace=apps/extension package:nightly",
     "prepare:vsix": "node scripts/prepare-vsix.mjs",
     "republish": "npm run build && npm run typecheck && npm run lint && npm run format:fix && npm run test",
     "benchmark": "npm run build && node scripts/benchmark.mjs",

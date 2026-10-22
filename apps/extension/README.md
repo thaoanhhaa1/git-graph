@@ -219,9 +219,12 @@ npm run benchmark:500k
 
 # Package production VSIX
 npm run package
+
+# Package nightly pre-release VSIX
+npm run package:nightly
 ```
 
-Packaging builds all workspaces, removes source maps, copies webview assets, and creates a versioned VSIX under `dist/`.
+Packaging builds all workspaces, removes source maps, copies webview assets, and creates a versioned VSIX under `dist/`. Pre-release nightly builds are automatically published on each master commit to the [Nightly GitHub Pre-Release](https://github.com/thaoanhhaa1/git-graph/releases/tag/nightly).
 
 ### Documentation
 

@@ -39,9 +39,7 @@
     "submodule"
   ],
   "activationEvents": [
-    "workspaceContains:.git",
-    "onCommand:gitGraph.toggleBlame",
-    "onCommand:gitGraph.viewLineHistory"
+    "workspaceContains:.git"
   ],
   "main": "./dist/extension.js",
   "l10n": "./l10n",
@@ -257,7 +255,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test:unit": "vitest run",
     "test:e2e": "vitest run test/e2e",
-    "package": "npx @vscode/vsce package --no-dependencies --out ../../dist/"
+    "package": "npx @vscode/vsce package --no-dependencies --out ../../dist/",
+    "package:nightly": "npx @vscode/vsce package --pre-release --no-dependencies --out ../../dist/"
   },
   "dependencies": {
     "@git-graph/git-core": "*",

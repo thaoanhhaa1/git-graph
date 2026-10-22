@@ -43,10 +43,14 @@ Git Graph publishes from GitHub Actions when a `v*` tag is pushed. The workflow 
 ## Local packaging
 
 ```sh
+# Stable production packaging
 npm run package
+
+# Pre-release nightly packaging
+npm run package:nightly
 ```
 
-This builds all workspaces, strips source maps, copies the webview assets, stages the extension package, and runs `vsce package --no-dependencies`. The VSIX is written under `dist/`.
+This builds all workspaces, strips source maps, copies the webview assets, stages the extension package, and runs `vsce package`. The VSIX is written under `dist/`.
 
 Useful environment variables:
 
@@ -73,7 +77,7 @@ The release workflow publishes automatically when `VSCE_PAT` is present. If the 
 | Workflow | Trigger | Purpose |
 | :--- | :--- | :--- |
 | `ci.yml` | Push/PR to `master` or `main` | Build, typecheck, lint, format, tests, VSIX artifact on Ubuntu/macOS/Windows. |
-| `nightly.yml` | Daily schedule + manual dispatch | Production build, full test suite, real-host E2E smoke, VSIX artifact, and benchmark report artifact. |
+| `nightly.yml` | Daily schedule (03:00 UTC) + manual dispatch | Production build, tests, real-host E2E smoke, 500K benchmark, rolling GitHub Pre-Release (`nightly` tag) with downloadable VSIX, and optional Marketplace pre-release publishing. |
 | `release.yml` | `v*` tag push | Quality gates, production package, GitHub Release, Marketplace publish. |
 
 ## Marketplace listing checklist
@@ -86,12 +90,20 @@ The release workflow publishes automatically when `VSCE_PAT` is present. If the 
 - Icon at `resources/icon.png` (128px+).
 - Publisher verified in the Marketplace portal.
 
-## Nightly smoke test
+## Nightly builds & pre-releases
 
-The nightly workflow installs `xvfb` on Ubuntu and runs:
+The nightly workflow (`nightly.yml`) runs every morning at 03:00 UTC or on-demand via `workflow_dispatch`:
 
-```sh
-xvfb-run -a npm run test:e2e:host
-```
+1. Executes the full quality pipeline: typecheck, lint, format, unit/integration tests.
+2. Runs the real VS Code host E2E suite under `xvfb`:
+
+   ```sh
+   xvfb-run -a npm run test:e2e:host
+   ```
+
+3. Runs the 500K-commit performance benchmark suite.
+4. Packages the pre-release VSIX (`npm run package:nightly`).
+5. Updates the rolling `nightly` tag to `HEAD` and publishes/updates the [Nightly GitHub Pre-Release](https://github.com/thaoanhhaa1/git-graph/releases/tag/nightly) with `cts-git-graph-nightly.vsix`.
+6. If `VSCE_PAT` is set, publishes the pre-release to Visual Studio Marketplace automatically.
 
 If the host suite fails, download the workflow artifacts and inspect the Extension Development Host logs. Clear `.vscode-test/` before rerunning locally.
