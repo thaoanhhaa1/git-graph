@@ -680,7 +680,6 @@ export class GitOperationService implements vscode.Disposable {
       repositoryId: options.repositoryId,
       type: 'branch-create',
       preflight: {
-        requireCleanWorktree: checkout,
         disallowBare: true,
         allowDetachedHead: true,
         validateBranchName: name,

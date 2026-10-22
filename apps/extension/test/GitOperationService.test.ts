@@ -497,6 +497,37 @@ describe('GitOperationService', () => {
     );
   });
 
+  it('creates and checks out a branch when the working tree has uncommitted changes', async () => {
+    const commitSha = '1234567890abcdef1234567890abcdef12345678';
+    mockRepo = createMockRepo('repo-1', async (args) => {
+      if (args[0] === 'status')
+        return createMockGitResult(' M src/modified.ts\n?? untracked.txt\n');
+      if (args[0] === 'symbolic-ref') return createMockGitResult('main\n');
+      if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+        return createMockGitResult('head123\n');
+      }
+      if (args[0] === 'rev-parse') return createMockGitResult(`${commitSha}\n`);
+      if (args[0] === 'check-ref-format') return createMockGitResult(`${args[2]}\n`);
+      if (args[0] === 'show-ref') return createMockGitResult('', '', 1);
+      return createMockGitResult();
+    });
+
+    const res = await service.createBranch({
+      operationId: 'branch-create-checkout-dirty',
+      repositoryId: 'repo-1',
+      name: 'feature/with-uncommitted-changes',
+      startPoint: commitSha,
+      checkout: true,
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.data?.checkedOut).toBe(true);
+    expect(mockRepo.exec).toHaveBeenCalledWith(
+      ['checkout', '-b', 'feature/with-uncommitted-changes', commitSha, '--'],
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
   it('rejects invalid or duplicate branch names before creation', async () => {
     mockRepo = createMockRepo('repo-1', async (args) => {
       if (args[0] === 'status') return createMockGitResult('');
