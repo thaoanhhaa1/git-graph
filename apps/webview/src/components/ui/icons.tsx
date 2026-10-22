@@ -43,7 +43,10 @@ export type IconName =
   | 'commit'
   | 'archive'
   | 'worktree'
-  | 'git-graph';
+  | 'git-graph'
+  | 'eye'
+  | 'view-file'
+  | 'open-file';
 
 export const ICONS: Record<IconName, IconDefinition> = {
   'find-head': {
@@ -367,6 +370,46 @@ export const ICONS: Record<IconName, IconDefinition> = {
         <circle cx="7" cy="9" r="1.2" fill="currentColor" />
         <circle cx="10" cy="8" r="1.2" fill="currentColor" />
         <circle cx="12" cy="3.5" r="1.6" fill="currentColor" />
+      </>
+    ),
+  },
+  eye: {
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    children: (
+      <>
+        <path d="M1.5 8s2.5-4.5 6.5-4.5 6.5 4.5 6.5 4.5-2.5 4.5-6.5 4.5S1.5 8 1.5 8z" fill="none" />
+        <circle cx="8" cy="8" r="2" fill="currentColor" stroke="none" />
+      </>
+    ),
+  },
+  'view-file': {
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    children: (
+      <>
+        <path
+          d="M5.5 2H3.5a1.5 1.5 0 0 0-1.5 1.5v10A1.5 1.5 0 0 0 3.5 15h9a1.5 1.5 0 0 0 1.5-1.5V6L10.5 2h-2"
+          fill="none"
+        />
+        <rect x="5.5" y="1" width="5" height="2" rx="0.5" fill="none" />
+        <line x1="5" y1="6" x2="8.5" y2="6" />
+        <line x1="5" y1="8.5" x2="11" y2="8.5" />
+        <polyline points="9.5 12 11 13.5 14 10.5" />
+      </>
+    ),
+  },
+  'open-file': {
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    children: (
+      <>
+        <path
+          d="M12 9v4.5a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 1 13.5v-8A1.5 1.5 0 0 1 2.5 4H7"
+          fill="none"
+        />
+        <polyline points="10 1 15 1 15 6" />
+        <line x1="8" y1="8" x2="15" y2="1" />
       </>
     ),
   },

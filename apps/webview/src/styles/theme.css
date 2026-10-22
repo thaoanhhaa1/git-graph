@@ -2246,6 +2246,57 @@ body.vscode-high-contrast-light .commit-action-menu-item.focused,
   font-weight: 600;
 }
 
+/* Changed Files: Hover Action Buttons */
+.file-actions {
+  display: none;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.file-tree-file-row:hover .file-actions,
+.file-tree-file-row:focus-within .file-actions,
+.file-tree-file-row.selected .file-actions,
+.changed-file-item:hover .file-actions,
+.changed-file-item:focus-within .file-actions,
+.changed-file-item.selected .file-actions {
+  display: inline-flex;
+}
+
+.file-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--color-fg-muted, #8b949e);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.file-action-btn:hover {
+  color: var(--color-fg, #ffffff);
+  background-color: var(--color-btn-hover, rgba(255, 255, 255, 0.1));
+}
+
+.file-action-btn:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007acc);
+  outline-offset: -1px;
+}
+
+.file-action-btn .ui-icon {
+  width: 13px;
+  height: 13px;
+}
+
 /* Far Right: Vertical Action Toolbar */
 .commit-details-vertical-toolbar {
   display: flex;

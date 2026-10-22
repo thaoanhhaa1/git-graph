@@ -80,7 +80,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     if (onFetch) {
       onFetch();
     } else {
-      requestFetch();
+      requestFetch({ all: true, prune: true });
     }
   };
 

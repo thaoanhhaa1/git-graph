@@ -427,6 +427,15 @@ describe('GitGraphView dialogs', () => {
       noConfirm: true,
     });
 
+    // Reopen merge dialog to verify remembered mode
+    await openCommitMenu();
+    await clickMenuItem('merge-commit');
+
+    const reopenedFfOnly = container.querySelector(
+      '[data-testid="merge-dialog-ff-only"]',
+    ) as HTMLInputElement;
+    expect(reopenedFfOnly.checked).toBe(true);
+
     await act(async () => root.unmount());
   });
 
@@ -752,7 +761,7 @@ describe('GitGraphView dialogs', () => {
     });
   });
 
-  it('opens the fetch dialog from the toolbar and submits remote options', async () => {
+  it('automatically fetches all from remote when fetch button is clicked without opening dialog', async () => {
     useRepositoryStore
       .getState()
       .setRepositories([{ id: 'repo-1', name: 'Repo One', path: '/path/one' }]);
@@ -769,21 +778,14 @@ describe('GitGraphView dialogs', () => {
     await act(async () => {
       (container.querySelector('[data-testid="toolbar-fetch-btn"]') as HTMLButtonElement).click();
     });
-    expect(container.querySelector('[data-testid="fetch-dialog"]')).toBeTruthy();
-    expect(postedMessages.some((message) => message.type === 'remote.list.request')).toBe(true);
 
-    await act(async () => {
-      (
-        container.querySelector('[data-testid="fetch-dialog-confirm-btn"]') as HTMLButtonElement
-      ).click();
-    });
+    expect(container.querySelector('[data-testid="fetch-dialog"]')).toBeNull();
 
     const message = postedMessages.find((item) => item.type === 'operation.fetch.request');
     expect(message?.payload).toMatchObject({
       repositoryId: 'repo-1',
-      remote: 'origin',
       prune: true,
-      all: false,
+      all: true,
     });
 
     await act(async () => root.unmount());
@@ -861,6 +863,61 @@ describe('GitGraphView dialogs', () => {
 
     expect(container.querySelector('[data-testid="pull-dialog"]')).toBeTruthy();
     expect(useUiStore.getState().requestedDialog).toBeNull();
+
+    await act(async () => root.unmount());
+  });
+
+  it('handles requestedDialog "fetch" by executing fetch without opening dialog', async () => {
+    useRepositoryStore
+      .getState()
+      .setRepositories([{ id: 'repo-1', name: 'Repo One', path: '/path/one' }]);
+    const root = createRoot(container);
+    await act(async () => root.render(<GitGraphView />));
+
+    await act(async () => {
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'dialog-open-fetch',
+        type: 'ui.dialog.open',
+        payload: { dialog: 'fetch' },
+      });
+    });
+
+    expect(container.querySelector('[data-testid="fetch-dialog"]')).toBeNull();
+    expect(useUiStore.getState().requestedDialog).toBeNull();
+
+    const message = postedMessages.find((item) => item.type === 'operation.fetch.request');
+    expect(message?.payload).toMatchObject({
+      repositoryId: 'repo-1',
+      prune: true,
+      all: true,
+    });
+
+    await act(async () => root.unmount());
+  });
+
+  it('shows success toast when a fetch operation completes successfully', async () => {
+    useRepositoryStore
+      .getState()
+      .setRepositories([{ id: 'repo-1', name: 'Repo One', path: '/path/one' }]);
+    const root = createRoot(container);
+    await act(async () => root.render(<GitGraphView />));
+
+    await act(async () => {
+      handleIncomingMessage({
+        protocolVersion: 1,
+        id: 'fetch-result',
+        type: 'operation.result',
+        payload: {
+          requestId: 'fetch-12345',
+          success: true,
+        },
+      });
+    });
+
+    const toast = container.querySelector('[data-testid="graph-toast-notification"]');
+    expect(toast).toBeTruthy();
+    expect(toast?.textContent).toContain('Fetch complete.');
 
     await act(async () => root.unmount());
   });

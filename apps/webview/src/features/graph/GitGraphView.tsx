@@ -23,8 +23,6 @@ import { CherryPickDialog } from '../dialogs/CherryPickDialog';
 import { RevertDialog } from '../dialogs/RevertDialog';
 import { StashSaveDialog } from '../dialogs/StashSaveDialog';
 import { StashManagerDialog } from '../dialogs/StashManagerDialog';
-import { FetchDialog } from '../dialogs/FetchDialog';
-import type { FetchDialogOptions } from '../dialogs/FetchDialog';
 import { PullDialog } from '../dialogs/PullDialog';
 import type { PullDialogOptions } from '../dialogs/PullDialog';
 import { PushDialog } from '../dialogs/PushDialog';
@@ -300,7 +298,6 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
   });
   const [stashSaveDialogOpen, setStashSaveDialogOpen] = useState(false);
   const [stashManagerOpen, setStashManagerOpen] = useState(false);
-  const [fetchDialogOpen, setFetchDialogOpen] = useState(false);
   const [pullDialogOpen, setPullDialogOpen] = useState(false);
   const [pushDialogOpen, setPushDialogOpen] = useState(false);
   const [remoteManagerOpen, setRemoteManagerOpen] = useState(false);
@@ -376,15 +373,19 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
     requestRemoteList(activeRepo.id);
   }, [activeRepo]);
 
-  const openFetchDialog = useCallback(() => {
+  const handleFetch = useCallback(() => {
     if (!activeRepo) {
       return;
     }
+    useGraphStore.getState().setError(null);
+    useRepositoryStore.getState().setError(null);
     setSyncDialogError(null);
-    setActiveDialogOperation(null);
-    refreshRemotes();
-    setFetchDialogOpen(true);
-  }, [activeRepo, refreshRemotes]);
+    requestFetch({
+      repositoryId: activeRepo.id,
+      prune: true,
+      all: true,
+    });
+  }, [activeRepo]);
 
   const openPullDialog = useCallback(() => {
     if (!activeRepo) {
@@ -1354,25 +1355,6 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
     [activeRepo, defaultRemote, refreshRemotes, resolveRemoteBranch],
   );
 
-  const handleExecuteFetch = useCallback(
-    (options: FetchDialogOptions) => {
-      if (!activeRepo) {
-        return;
-      }
-      setSyncDialogError(null);
-      const id = requestFetch({
-        repositoryId: activeRepo.id,
-        ...(options.remote ? { remote: options.remote } : {}),
-        prune: options.prune,
-        all: options.all,
-      });
-      if (id) {
-        setActiveDialogOperation({ id, kind: 'fetch' });
-      }
-    },
-    [activeRepo],
-  );
-
   const handleExecutePull = useCallback(
     (options: PullDialogOptions) => {
       if (!activeRepo) {
@@ -1782,10 +1764,6 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
     () => setRevertDialog((prev) => ({ ...prev, isOpen: false })),
     [],
   );
-  const closeFetchDialog = useCallback(() => {
-    setFetchDialogOpen(false);
-    setSyncDialogError(null);
-  }, []);
   const closePullDialog = useCallback(() => {
     setPullDialogOpen(false);
     setSyncDialogError(null);
@@ -1807,7 +1785,7 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
     }
     switch (requestedDialog) {
       case 'fetch':
-        openFetchDialog();
+        handleFetch();
         break;
       case 'pull':
         openPullDialog();
@@ -1826,7 +1804,7 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
   }, [
     requestedDialog,
     activeRepo,
-    openFetchDialog,
+    handleFetch,
     openPullDialog,
     openPushDialog,
     openRemoteManager,
@@ -1860,6 +1838,16 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
       return;
     }
 
+    if (result.requestId.startsWith('fetch-')) {
+      if (result.success) {
+        showToast('Fetch complete.', 'success', 4000);
+      } else {
+        showToast(message, 'error', 6000);
+      }
+      clearResult();
+      return;
+    }
+
     const activeMatches = activeDialogOperation?.id === result.requestId;
     const kind = activeMatches ? activeDialogOperation.kind : null;
 
@@ -1876,10 +1864,6 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
       }
       setSyncDialogError(null);
       switch (kind) {
-        case 'fetch':
-          setFetchDialogOpen(false);
-          showToast('Fetch complete.', 'success', 4000);
-          break;
         case 'pull':
           setPullDialogOpen(false);
           showToast('Pull complete.', 'success', 4000);
@@ -1979,7 +1963,7 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
       {/* Top Toolbar */}
       <Toolbar
         onRefresh={handleRetry}
-        onFetch={openFetchDialog}
+        onFetch={handleFetch}
         onPull={openPullDialog}
         onPush={openPushDialog}
         onManageRemotes={openRemoteManager}
@@ -2367,17 +2351,6 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
                 }}
               />
             )}
-            <FetchDialog
-              isOpen={fetchDialogOpen}
-              remotes={remotes}
-              defaultRemote={defaultRemote}
-              progress={dialogProgress}
-              progressMessage={dialogProgressMessage}
-              isRunning={activeDialogOperation?.kind === 'fetch'}
-              error={syncDialogError}
-              onClose={closeFetchDialog}
-              onFetch={handleExecuteFetch}
-            />
             <PullDialog
               isOpen={pullDialogOpen}
               currentBranch={activeRepo?.currentBranch}
