@@ -1,0 +1,8 @@
+{
+  "Creating worktree...": "Đang tạo worktree...",
+  "Removing worktree...": "Đang xoá worktree...",
+  "Force removing worktree...": "Đang buộc xoá worktree...",
+  "Failed to list worktrees: {0}": "Không thể liệt kê worktree: {0}",
+  "Failed to list submodules: {0}": "Không thể liệt kê submodule: {0}",
+  "Worktree path is required.": "Cần nhập đường dẫn worktree."
+}

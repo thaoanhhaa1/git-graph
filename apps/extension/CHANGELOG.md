@@ -2,6 +2,66 @@
 
 All notable changes to Git Graph are documented in this file.
 
+## 1.0.0 - 2026-10-22
+
+### Added
+
+- **Production-grade E2E coverage:**
+  - Ten end-to-end scenarios (E1–E10) covering graph rendering, search/filter, commit workflow, branch operations, merge, stash, push/pull, blame, multi-repo switching, and large-history paging.
+  - Real VS Code host suite powered by `@vscode/test-electron` (`npm run test:e2e:host`) with deterministic Git fixtures and a test-only message bridge gated behind `GIT_GRAPH_E2E=1`.
+
+- **500K-commit performance hardening:**
+  - Benchmark targets for initial render (<200ms), page load (<100ms), graph layout (<50ms), search (<50ms), memory (<150MB), and scroll frame time (<16ms).
+  - Automated Markdown + JSON benchmark report with a checked-in v0.2.1 baseline for release-over-release comparison (`npm run benchmark`, `npm run benchmark:500k`).
+  - 100K-commit paging memory profile verified under the strict 120MB budget.
+
+- **Release engineering & documentation:**
+  - Marketplace auto-publish on `v*` tags, nightly build/smoke workflow, and Dependabot configuration.
+  - Upgraded README with Marketplace badges, feature comparison, quick start, and 1.0.0 highlights.
+  - New testing and publishing guides under `docs/`.
+
+## 0.5.0 - 2026-10-21
+
+### Added
+
+- **Git worktrees:** list, add, remove, and open worktrees from the graph, with a dedicated `WorktreeManagerDialog` and worktree status surface.
+- **Submodule awareness:** detect `.gitmodules`, list submodules, show `[submodule]` context, open a submodule graph, and inspect dirty/ahead/behind status.
+- **Internationalization:** VS Code `l10n` bundles for English, Vietnamese, Japanese, and Simplified Chinese on the extension host, plus a lightweight locale wrapper for webview UI strings.
+- SVG remains the default renderer; the conditional Canvas renderer from the roadmap was evaluated but not shipped because the 500K benchmark stayed within budget.
+
+## 0.4.1 - 2026-10-21
+
+### Added
+
+- **Graph minimap:** canvas overview with viewport tracking and visibility toggle (`gitGraph.showMinimap`).
+- **Branch drag & drop:** drag refs to branch actions, touch-friendly branch dragging, and compare/branch action dialogs.
+- **Settings UI:** in-webview settings dialog with display, Git, graph, and performance categories backed by the VS Code configuration bridge.
+- **Accessibility polish:** dialog/menu roles, `aria` labels, focus management, and full keyboard navigation audit across graph, menus, and dialogs.
+
+## 0.4.0 - 2026-10-21
+
+### Added
+
+- **Interactive rebase:** plan parser, drag-and-drop reorder UI, and reword/edit/squash/fixup/drop actions.
+- Published-branch protection with explicit confirmation, plus continue/abort/skip controls for conflicted rebases.
+
+## 0.3.1 - 2026-10-21
+
+### Added
+
+- **Git blame engine:** parser and repository queries for line-level blame and line history.
+- **Inline blame annotations:** configurable decorations with hover details, automatic refresh on Git metadata changes, and `gitGraph.toggleBlame`.
+- **Line history view:** per-line/per-range history panel from the editor context menu (`gitGraph.viewLineHistory`).
+
+## 0.3.0 - 2026-10-21
+
+### Added
+
+- **Remote operations:** Fetch, Pull, and Push dialogs with prune, strategy (`merge`/`rebase`/`ff-only`), autostash, force-with-lease, tags, and upstream tracking options.
+- **Remote management:** add, remove, rename, and update remote URLs from `RemoteManagerDialog`.
+- **Undo last operation:** reflog-backed undo for HEAD-changing operations with safety checks.
+- **Sync status:** ahead/behind indicators surfaced through the status bar and repository sync status messages.
+
 ## 0.2.1 - 2026-10-21
 
 ### Fixed

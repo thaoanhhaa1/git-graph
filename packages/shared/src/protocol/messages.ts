@@ -7,6 +7,13 @@ import type {
   StashEntry,
   TagType,
   WorktreeStatus,
+  RemoteInfo,
+  ReflogEntry,
+  RepositorySyncStatus,
+  OperationUndoInfo,
+  RebasePlanEntry,
+  GitWorktreeInfo,
+  SubmoduleInfo,
 } from '../domain';
 import { AppErrorCode, type SerializedAppError } from '../errors';
 
@@ -112,6 +119,8 @@ export type OperationCheckoutTargetType = 'localBranch' | 'remoteBranch' | 'tag'
 export type OperationMergeFastForwardMode = 'ff' | 'no-ff' | 'ff-only';
 export type OperationResetMode = 'soft' | 'mixed' | 'hard';
 export type OperationSequencerAction = 'continue' | 'abort' | 'skip';
+export type OperationPullStrategy = 'merge' | 'rebase' | 'ff-only';
+export type WebviewDialogKind = 'fetch' | 'pull' | 'push' | 'remotes' | 'worktrees';
 
 export interface OperationCheckoutRequestPayload {
   repositoryId: string;
@@ -168,6 +177,8 @@ export interface OperationPushRequestPayload {
   remote?: string;
   setUpstream?: boolean;
   force?: boolean;
+  forceWithLease?: boolean;
+  tags?: boolean;
 }
 export type OperationPushRequestMessage = MessageEnvelope<
   'operation.push.request',
@@ -250,6 +261,42 @@ export type OperationRebaseSkipRequestMessage = MessageEnvelope<
   OperationRebaseActionRequestPayload
 >;
 
+export interface RebaseInteractivePlanRequestPayload {
+  repositoryId: string;
+  onto: string;
+}
+export type RebaseInteractivePlanRequestMessage = MessageEnvelope<
+  'rebase.interactive.plan.request',
+  RebaseInteractivePlanRequestPayload
+>;
+
+export interface RebaseInteractiveStartRequestPayload {
+  repositoryId: string;
+  onto?: string;
+  plan: RebasePlanEntry[];
+  confirmedPublishedBranch?: boolean;
+}
+export type RebaseInteractiveStartRequestMessage = MessageEnvelope<
+  'rebase.interactive.start.request',
+  RebaseInteractiveStartRequestPayload
+>;
+
+export interface RebaseInteractiveActionRequestPayload {
+  repositoryId: string;
+}
+export type RebaseInteractiveContinueRequestMessage = MessageEnvelope<
+  'rebase.interactive.continue',
+  RebaseInteractiveActionRequestPayload
+>;
+export type RebaseInteractiveAbortRequestMessage = MessageEnvelope<
+  'rebase.interactive.abort',
+  RebaseInteractiveActionRequestPayload
+>;
+export type RebaseInteractiveSkipRequestMessage = MessageEnvelope<
+  'rebase.interactive.skip',
+  RebaseInteractiveActionRequestPayload
+>;
+
 export interface OperationCherryPickRequestPayload {
   repositoryId: string;
   commit: string;
@@ -318,7 +365,96 @@ export interface OperationFetchRequestPayload {
   repositoryId: string;
   remote?: string;
   prune?: boolean;
+  all?: boolean;
 }
+
+export interface OperationPullRequestPayload {
+  repositoryId: string;
+  remote?: string;
+  branch?: string;
+  strategy?: OperationPullStrategy;
+  autostash?: boolean;
+}
+export type OperationPullRequestMessage = MessageEnvelope<
+  'operation.pull.request',
+  OperationPullRequestPayload
+>;
+
+export interface RemoteListRequestPayload {
+  repositoryId: string;
+}
+export type RemoteListRequestMessage = MessageEnvelope<
+  'remote.list.request',
+  RemoteListRequestPayload
+>;
+
+export interface RemoteAddRequestPayload {
+  repositoryId: string;
+  name: string;
+  url: string;
+}
+export type RemoteAddRequestMessage = MessageEnvelope<
+  'remote.add.request',
+  RemoteAddRequestPayload
+>;
+
+export interface RemoteRemoveRequestPayload {
+  repositoryId: string;
+  name: string;
+}
+export type RemoteRemoveRequestMessage = MessageEnvelope<
+  'remote.remove.request',
+  RemoteRemoveRequestPayload
+>;
+
+export interface RemoteRenameRequestPayload {
+  repositoryId: string;
+  oldName: string;
+  newName: string;
+}
+export type RemoteRenameRequestMessage = MessageEnvelope<
+  'remote.rename.request',
+  RemoteRenameRequestPayload
+>;
+
+export interface RemoteSetUrlRequestPayload {
+  repositoryId: string;
+  name: string;
+  url: string;
+  push?: boolean;
+}
+export type RemoteSetUrlRequestMessage = MessageEnvelope<
+  'remote.setUrl.request',
+  RemoteSetUrlRequestPayload
+>;
+
+export interface ReflogRecentRequestPayload {
+  repositoryId: string;
+  limit?: number;
+}
+export type ReflogRecentRequestMessage = MessageEnvelope<
+  'reflog.recent.request',
+  ReflogRecentRequestPayload
+>;
+
+export interface OperationUndoRequestPayload {
+  repositoryId: string;
+  reflogIndex?: number;
+  expectedSha?: string;
+  operationId?: string;
+}
+export type OperationUndoRequestMessage = MessageEnvelope<
+  'operation.undo.request',
+  OperationUndoRequestPayload
+>;
+
+export interface RepositorySyncStatusRequestPayload {
+  repositoryId: string;
+}
+export type RepositorySyncStatusRequestMessage = MessageEnvelope<
+  'repository.syncStatus.request',
+  RepositorySyncStatusRequestPayload
+>;
 export type OperationFetchRequestMessage = MessageEnvelope<
   'operation.fetch.request',
   OperationFetchRequestPayload
@@ -395,6 +531,61 @@ export type WorktreeDiscardRequestMessage = MessageEnvelope<
   WorktreeDiscardRequestPayload
 >;
 
+export interface GitWorktreeListRequestPayload {
+  repositoryId: string;
+}
+export type GitWorktreeListRequestMessage = MessageEnvelope<
+  'worktree.list.request',
+  GitWorktreeListRequestPayload
+>;
+
+export interface GitWorktreeAddRequestPayload {
+  repositoryId: string;
+  path: string;
+  branch?: string;
+  newBranch?: string;
+}
+export type GitWorktreeAddRequestMessage = MessageEnvelope<
+  'worktree.add.request',
+  GitWorktreeAddRequestPayload
+>;
+
+export interface GitWorktreeRemoveRequestPayload {
+  repositoryId: string;
+  path: string;
+  force?: boolean;
+}
+export type GitWorktreeRemoveRequestMessage = MessageEnvelope<
+  'worktree.remove.request',
+  GitWorktreeRemoveRequestPayload
+>;
+
+export interface GitWorktreeOpenRequestPayload {
+  repositoryId: string;
+  path: string;
+}
+export type GitWorktreeOpenRequestMessage = MessageEnvelope<
+  'worktree.open.request',
+  GitWorktreeOpenRequestPayload
+>;
+
+export interface SubmoduleListRequestPayload {
+  repositoryId: string;
+}
+export type SubmoduleListRequestMessage = MessageEnvelope<
+  'submodule.list.request',
+  SubmoduleListRequestPayload
+>;
+
+export interface SubmoduleOpenRequestPayload {
+  repositoryId: string;
+  path: string;
+}
+export type SubmoduleOpenRequestMessage = MessageEnvelope<
+  'submodule.open.request',
+  SubmoduleOpenRequestPayload
+>;
+
 export interface OperationCommitCreateRequestPayload {
   repositoryId: string;
   message: string;
@@ -447,6 +638,11 @@ export type ViewConfigUpdateMessage = MessageEnvelope<
   ViewConfigUpdatePayload
 >;
 
+export type ViewConfigChangedMessage = MessageEnvelope<
+  'view.config.changed',
+  ViewConfigUpdatePayload
+>;
+
 export type WebviewToExtensionMessage =
   | AppReadyMessage
   | RepositoriesListRequestMessage
@@ -460,6 +656,12 @@ export type WebviewToExtensionMessage =
   | WorktreeStageRequestMessage
   | WorktreeUnstageRequestMessage
   | WorktreeDiscardRequestMessage
+  | GitWorktreeListRequestMessage
+  | GitWorktreeAddRequestMessage
+  | GitWorktreeRemoveRequestMessage
+  | GitWorktreeOpenRequestMessage
+  | SubmoduleListRequestMessage
+  | SubmoduleOpenRequestMessage
   | OperationCommitCreateRequestMessage
   | StashListRequestMessage
   | StashSaveRequestMessage
@@ -473,6 +675,16 @@ export type WebviewToExtensionMessage =
   | OperationBranchRenameRequestMessage
   | OperationBranchDeleteRequestMessage
   | OperationPushRequestMessage
+  | OperationPullRequestMessage
+  | OperationFetchRequestMessage
+  | RemoteListRequestMessage
+  | RemoteAddRequestMessage
+  | RemoteRemoveRequestMessage
+  | RemoteRenameRequestMessage
+  | RemoteSetUrlRequestMessage
+  | ReflogRecentRequestMessage
+  | OperationUndoRequestMessage
+  | RepositorySyncStatusRequestMessage
   | OperationTagCreateRequestMessage
   | OperationTagDeleteRequestMessage
   | OperationMergeRequestMessage
@@ -481,6 +693,11 @@ export type WebviewToExtensionMessage =
   | OperationRebaseContinueRequestMessage
   | OperationRebaseAbortRequestMessage
   | OperationRebaseSkipRequestMessage
+  | RebaseInteractivePlanRequestMessage
+  | RebaseInteractiveStartRequestMessage
+  | RebaseInteractiveContinueRequestMessage
+  | RebaseInteractiveAbortRequestMessage
+  | RebaseInteractiveSkipRequestMessage
   | OperationCherryPickRequestMessage
   | OperationCherryPickContinueRequestMessage
   | OperationCherryPickAbortRequestMessage
@@ -502,6 +719,8 @@ export interface AppBootstrapPayload {
   repositories: (RepositoryDescriptor | RepositoryPlaceholderItem)[];
   activeRepositoryId?: string;
   theme?: string;
+  /** BCP-47 language tag from the VS Code display language. */
+  locale?: string;
   initialFilterPath?: string;
   config?: {
     showAuthor?: boolean;
@@ -511,6 +730,11 @@ export interface AppBootstrapPayload {
     dateType?: 'relative' | 'absolute' | 'default';
     pageSize?: number;
     commitOrdering?: CommitOrdering;
+    compactMode?: boolean;
+    showMinimap?: boolean;
+    showStatusBarItem?: boolean;
+    blameEnabled?: boolean;
+    blameFormat?: string;
   };
 }
 export type AppBootstrapMessage = MessageEnvelope<'app.bootstrap', AppBootstrapPayload>;
@@ -594,6 +818,27 @@ export type WorktreeStatusResultMessage = MessageEnvelope<
   WorktreeStatusResultPayload
 >;
 
+export interface GitWorktreeListResultPayload {
+  requestId?: string;
+  repositoryId: string;
+  worktrees: GitWorktreeInfo[];
+  currentPath?: string;
+}
+export type GitWorktreeListResultMessage = MessageEnvelope<
+  'worktree.list.result',
+  GitWorktreeListResultPayload
+>;
+
+export interface SubmoduleListResultPayload {
+  requestId?: string;
+  repositoryId: string;
+  submodules: SubmoduleInfo[];
+}
+export type SubmoduleListResultMessage = MessageEnvelope<
+  'submodule.list.result',
+  SubmoduleListResultPayload
+>;
+
 export interface StashListResultPayload {
   requestId?: string;
   repositoryId: string;
@@ -605,6 +850,15 @@ export interface GraphInvalidatedPayload {
   repositoryId?: string;
 }
 export type GraphInvalidatedMessage = MessageEnvelope<'graph.invalidated', GraphInvalidatedPayload>;
+
+export interface GraphRevealCommitPayload {
+  repositoryId?: string;
+  sha: string;
+}
+export type GraphRevealCommitMessage = MessageEnvelope<
+  'graph.reveal.commit',
+  GraphRevealCommitPayload
+>;
 
 export interface OperationProgressPayload {
   requestId: string;
@@ -621,8 +875,55 @@ export interface OperationResultPayload {
   success: boolean;
   error?: SerializedAppError;
   data?: unknown;
+  undo?: OperationUndoInfo;
 }
 export type OperationResultMessage = MessageEnvelope<'operation.result', OperationResultPayload>;
+
+export interface RemoteListResultPayload {
+  requestId?: string;
+  repositoryId: string;
+  remotes: RemoteInfo[];
+}
+export type RemoteListResultMessage = MessageEnvelope<
+  'remote.list.result',
+  RemoteListResultPayload
+>;
+
+export interface ReflogRecentResultPayload {
+  requestId?: string;
+  repositoryId: string;
+  entries: ReflogEntry[];
+}
+export type ReflogRecentResultMessage = MessageEnvelope<
+  'reflog.recent.result',
+  ReflogRecentResultPayload
+>;
+
+export interface RebaseInteractivePlanResultPayload {
+  requestId?: string;
+  repositoryId: string;
+  onto: string;
+  entries: RebasePlanEntry[];
+  error?: string;
+}
+export type RebaseInteractivePlanResultMessage = MessageEnvelope<
+  'rebase.interactive.plan.result',
+  RebaseInteractivePlanResultPayload
+>;
+
+export interface RepositorySyncStatusResultPayload {
+  requestId?: string;
+  status: RepositorySyncStatus;
+}
+export type RepositorySyncStatusResultMessage = MessageEnvelope<
+  'repository.syncStatus.result',
+  RepositorySyncStatusResultPayload
+>;
+
+export interface UiDialogOpenPayload {
+  dialog: WebviewDialogKind;
+}
+export type UiDialogOpenMessage = MessageEnvelope<'ui.dialog.open', UiDialogOpenPayload>;
 
 export interface NotificationErrorPayload {
   code: AppErrorCode;
@@ -646,12 +947,21 @@ export type ExtensionToWebviewMessage =
   | CommitDiffResultMessage
   | SearchResultMessage
   | WorktreeStatusResultMessage
+  | GitWorktreeListResultMessage
+  | SubmoduleListResultMessage
   | StashListResultMessage
   | GraphInvalidatedMessage
+  | GraphRevealCommitMessage
   | OperationProgressMessage
   | OperationResultMessage
+  | RemoteListResultMessage
+  | ReflogRecentResultMessage
+  | RebaseInteractivePlanResultMessage
+  | RepositorySyncStatusResultMessage
+  | UiDialogOpenMessage
   | NotificationErrorMessage
-  | FilterPathSetMessage;
+  | FilterPathSetMessage
+  | ViewConfigChangedMessage;
 
 export type ProtocolMessage = WebviewToExtensionMessage | ExtensionToWebviewMessage;
 

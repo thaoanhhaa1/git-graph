@@ -1,190 +1,104 @@
-# Hướng dẫn build và test extension
+# Testing Guide
 
-Tài liệu này hướng dẫn từng bước để build dự án thành VS Code extension và kiểm thử extension trên VS Code.
+This repository uses three layers of tests:
 
-## 1. Chuẩn bị môi trường
+| Layer | Command | What it covers |
+| :--- | :--- | :--- |
+| Unit + integration + mock E2E | `npm test` | Packages, stores, components, extension controllers, and the ten E2E scenarios against the in-process VS Code mock. |
+| Real VS Code host E2E | `npm run test:e2e:host` | The same ten scenarios inside a downloaded VS Code Extension Development Host. |
+| Performance benchmarks | `npm run benchmark:quick` / `npm run benchmark:500k` | Layout, serialization, paging, search, memory, and scroll budgets. |
 
-1. Cài Node.js và npm theo yêu cầu của repo:
-   - Node.js `>=20.0.0`
-   - npm `>=10.0.0`
-2. Cài Git và kiểm tra lệnh `git` chạy được trong terminal:
+## Prerequisites
 
-   ```sh
-   git --version
-   ```
+- Node.js 20+ and npm 10+
+- Git available on `PATH`
+- macOS, Linux, or Windows
 
-3. Cài VS Code.
-4. Mở terminal tại thư mục gốc repo:
-
-   ```sh
-   cd /path/to/git-graph
-   ```
-
-## 2. Cài dependencies
-
-Chạy lệnh sau ở thư mục gốc repo:
+Install dependencies and build once:
 
 ```sh
 npm ci
-```
-
-Lệnh này cài dependencies cho toàn bộ npm workspaces, bao gồm extension, webview và các package dùng chung.
-
-## 3. Build toàn bộ dự án
-
-Chạy build ở root repo:
-
-```sh
 npm run build
 ```
 
-Lệnh này build các workspace cần thiết, bao gồm:
-
-- `apps/extension`: mã TypeScript của VS Code extension.
-- `apps/webview`: giao diện webview được nhúng vào extension.
-- `packages/*`: các package runtime mà extension sử dụng.
-
-## 4. Chuẩn bị asset cho VSIX
-
-Sau khi build xong, chạy:
+## Unit, integration, and mock E2E
 
 ```sh
-npm run prepare:vsix
-```
-
-Lệnh này copy các artifact cần thiết vào `apps/extension`, bao gồm:
-
-- Webview build output từ `apps/webview/dist` vào `apps/extension/dist/webview`.
-- Runtime package build output từ `packages/*/dist` vào `apps/extension/node_modules/@git-graph/*`.
-- `README.md`, `CHANGELOG.md` và `LICENSE` vào thư mục extension.
-
-## 5. Đóng gói thành file VSIX
-
-Chạy lệnh package ở root repo:
-
-```sh
-npm run package
-```
-
-Lệnh này sẽ tự chạy `npm run build`, `npm run prepare:vsix`, sau đó gọi script package của workspace extension.
-
-File extension sau khi build sẽ nằm tại:
-
-```text
-dist/vscode-git-graph-0.1.0.vsix
-```
-
-## 6. Cài extension vào VS Code để test
-
-Có 2 cách cài file VSIX.
-
-### Cách 1: Cài bằng giao diện VS Code
-
-1. Mở VS Code.
-2. Mở tab Extensions.
-3. Chọn menu `...` ở góc trên của tab Extensions.
-4. Chọn `Install from VSIX...`.
-5. Chọn file:
-
-   ```text
-   dist/vscode-git-graph-0.1.0.vsix
-   ```
-
-6. Reload VS Code nếu được yêu cầu.
-
-### Cách 2: Cài bằng command line
-
-Chạy từ thư mục gốc repo:
-
-```sh
-code --install-extension dist/vscode-git-graph-0.1.0.vsix
-```
-
-Nếu VS Code không nhận lệnh `code`, mở VS Code rồi chạy command `Shell Command: Install 'code' command in PATH` từ Command Palette.
-
-## 7. Test extension sau khi cài
-
-1. Mở VS Code ở một folder có Git repository:
-
-   ```sh
-   code /path/to/a/git-repository
-   ```
-
-2. Mở Command Palette:
-   - macOS: `Cmd+Shift+P`
-   - Windows/Linux: `Ctrl+Shift+P`
-3. Chạy command:
-
-   ```text
-   Git Graph: View Git Graph
-   ```
-
-4. Kiểm tra các chức năng chính:
-   - Extension mở được Git Graph webview.
-   - Danh sách repository hiển thị đúng.
-   - Branch, tag, commit và changed files hiển thị đúng.
-   - Tìm kiếm commit hoạt động.
-   - Chọn commit hiển thị chi tiết commit.
-   - Xem diff/file revision hoạt động.
-   - Checkout ref hoặc tạo branch/tag hoạt động theo đúng preflight check.
-
-## 8. Test nhanh bằng Extension Development Host
-
-Nếu muốn test trong môi trường dev mà không cần cài VSIX:
-
-1. Mở repo này bằng VS Code.
-2. Chạy build trước:
-
-   ```sh
-   npm run build
-   ```
-
-3. Mở tab Run and Debug.
-4. Chọn cấu hình `Extension Development Host`.
-5. Nhấn `F5`.
-6. Trong cửa sổ VS Code mới, mở một Git repository và chạy command:
-
-   ```text
-   Git Graph: View Git Graph
-   ```
-
-Cấu hình debug hiện dùng `apps/extension` làm `extensionDevelopmentPath` và chạy task `npm: build` trước khi mở Extension Development Host.
-
-## 9. Cập nhật và test lại sau khi sửa code
-
-Sau mỗi lần sửa code, build và đóng gói lại:
-
-```sh
-npm run package
-```
-
-Sau đó cài lại VSIX:
-
-```sh
-code --install-extension dist/vscode-git-graph-0.1.0.vsix --force
-```
-
-Reload VS Code rồi test lại command `Git Graph: View Git Graph`.
-
-## 10. Kiểm tra chất lượng trước khi đóng gói
-
-Trước khi gửi bản build cho người khác test, nên chạy:
-
-```sh
-npm run typecheck
-npm run lint
 npm test
-npm run package
+npm run test:unit
+npm run test:integration
+npm run test:e2e
 ```
 
-Nếu các lệnh này pass, file VSIX trong `dist/` đã sẵn sàng để cài và kiểm thử thủ công.
+The mock E2E suite lives in `apps/extension/test/e2e/extension-e2e.test.ts` and covers:
 
-## 11. Xử lý lỗi thường gặp
+- E1 open/render, commit pages, details
+- E2 search by subject/author/hash + path filters
+- E3 stage → commit → graph refresh
+- E4 branch create → checkout → delete
+- E5 merge with a merge commit
+- E6 stash save → list → pop
+- E7 push/pull against a local bare remote
+- E8 inline blame toggle
+- E9 multi-repository switching
+- E10 paging through a large synthetic history
 
-- Nếu `npm ci` lỗi, kiểm tra lại phiên bản Node.js và npm.
-- Nếu `npm run build` báo thiếu webview output, chạy lại `npm run build` ở root repo thay vì chỉ build riêng extension.
-- Nếu `npm run prepare:vsix` lỗi vì thiếu `dist`, bảo đảm các package và webview đã build thành công.
-- Nếu `npm run package` lỗi do thiếu `vsce`, npm sẽ dùng `npx @vscode/vsce` theo script trong `apps/extension/package.json`.
-- Nếu VS Code không nhận lệnh `code`, cài command line launcher bằng Command Palette của VS Code.
-- Nếu extension không xuất hiện sau khi cài VSIX, reload VS Code hoặc gỡ bản cũ rồi cài lại bằng `code --install-extension dist/vscode-git-graph-0.1.0.vsix --force`.
-- Nếu command `Git Graph: View Git Graph` không hiển thị dữ liệu, mở workspace là một Git repository và kiểm tra `git rev-parse --show-toplevel` chạy được trong terminal.
+The suite uses deterministic temporary Git repositories and the VS Code mock in `apps/extension/test/__mocks__/vscode.ts`, so it runs quickly and does not need a display server.
+
+## Real VS Code host E2E
+
+```sh
+npm run test:e2e:host
+```
+
+What happens:
+
+1. The suite is compiled from `apps/extension/test/e2e/host/suite.ts` into `apps/extension/.vscode-test/e2e-out`.
+2. Temporary fixtures (`primary` and `secondary` Git repositories) and a `.code-workspace` file are created.
+3. `@vscode/test-electron` downloads VS Code on first run (cached under `.vscode-test/`) and launches an Extension Development Host.
+4. The harness sets `GIT_GRAPH_E2E=1`. In that mode the extension registers a small test-only bridge:
+   - `gitGraph.__e2e.handleWebviewMessage`
+   - `gitGraph.__e2e.getPostedMessages`
+   - `gitGraph.__e2e.clearPostedMessages`
+   - `gitGraph.__e2e.getPanelState`
+5. The suite drives the real extension through webview protocol messages, mutates real Git repositories, and asserts on posted messages, Git state, and configuration.
+
+The bridge is completely inert unless `GIT_GRAPH_E2E=1` is set. It is never enabled for Marketplace builds.
+
+### Troubleshooting the host suite
+
+- **First run is slow:** VS Code (~300MB) is downloaded once into `.vscode-test/`.
+- **Unix socket path too long (macOS):** the runner uses short temporary `--user-data-dir` and `--extensions-dir` paths to stay under the 103-character limit.
+- **Stale Extension Development Host:** delete `.vscode-test/` and rerun.
+- **Headless Linux CI:** run under `xvfb-run -a npm run test:e2e:host` or use the nightly workflow, which installs `xvfb`.
+
+## Benchmarks
+
+```sh
+npm run benchmark:quick   # fast smoke run
+npm run benchmark:500k    # full 1K/10K/100K/500K suites + 100K paging memory
+npm run benchmark         # default full run (repeat = 3)
+```
+
+Outputs:
+
+- `docs/benchmark-report.json` (ignored by Git)
+- `docs/benchmark-report.md` (checked in)
+- `docs/benchmark-baseline-v0.2.1.json` (checked in baseline for comparison)
+
+Targets enforced by the report:
+
+| Metric | Target |
+| :--- | ---: |
+| Initial render (500 commits) | < 200ms |
+| Page load (next 500 commits) | < 100ms |
+| Graph layout (500 commits) | < 50ms |
+| Search (100K loaded commits) | < 50ms |
+| Memory (100K commits paged) | < 150MB |
+| Scroll frame time | < 16ms |
+
+To refresh the baseline after an intentional performance change:
+
+```sh
+npm run benchmark:baseline
+```

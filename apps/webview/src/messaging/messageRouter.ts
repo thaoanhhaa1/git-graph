@@ -1,4 +1,5 @@
 import {
+  AppErrorCode,
   createMessage,
   safeParseExtensionMessage,
   clampPageSize,
@@ -20,12 +21,24 @@ import {
   type OperationBranchRenameRequestPayload,
   type OperationBranchDeleteRequestPayload,
   type OperationPushRequestPayload,
+  type OperationPullRequestPayload,
+  type OperationUndoRequestPayload,
+  type RemoteListRequestPayload,
+  type RemoteAddRequestPayload,
+  type RemoteRemoveRequestPayload,
+  type RemoteRenameRequestPayload,
+  type RemoteSetUrlRequestPayload,
+  type ReflogRecentRequestPayload,
+  type RepositorySyncStatusRequestPayload,
   type OperationTagCreateRequestPayload,
   type OperationTagDeleteRequestPayload,
   type OperationMergeRequestPayload,
   type OperationMergeAbortRequestPayload,
   type OperationRebaseRequestPayload,
   type OperationRebaseActionRequestPayload,
+  type RebaseInteractivePlanRequestPayload,
+  type RebaseInteractiveStartRequestPayload,
+  type RebaseInteractiveActionRequestPayload,
   type OperationCherryPickRequestPayload,
   type OperationRevertRequestPayload,
   type OperationSequencerActionRequestPayload,
@@ -35,6 +48,12 @@ import {
   type WorktreeStageRequestPayload,
   type WorktreeUnstageRequestPayload,
   type WorktreeDiscardRequestPayload,
+  type GitWorktreeListRequestPayload,
+  type GitWorktreeAddRequestPayload,
+  type GitWorktreeRemoveRequestPayload,
+  type GitWorktreeOpenRequestPayload,
+  type SubmoduleListRequestPayload,
+  type SubmoduleOpenRequestPayload,
   type OperationCommitCreateRequestPayload,
   type StashListRequestPayload,
   type StashSaveRequestPayload,
@@ -50,6 +69,13 @@ import { useDetailsStore } from '../stores/detailsStore';
 import { useDiffStore } from '../stores/diffStore';
 import { useWorktreeStore } from '../stores/worktreeStore';
 import { useConfigStore } from '../stores/configStore';
+import { useOperationStore } from '../stores/operationStore';
+import { useRemoteStore } from '../stores/remoteStore';
+import { useUiStore } from '../stores/uiStore';
+import { useInteractiveRebaseStore } from '../stores/interactiveRebaseStore';
+import { useGitWorktreeStore } from '../stores/gitWorktreeStore';
+import { useSubmoduleStore } from '../stores/submoduleStore';
+import { setLocale, t } from '../i18n';
 
 export interface RequestCommitsOptions {
   repositoryId?: string;
@@ -94,6 +120,9 @@ export function selectRepository(repositoryId: string): void {
   useDetailsStore.getState().clearDetails();
   useDiffStore.getState().clearDiff();
   useWorktreeStore.getState().reset();
+  useInteractiveRebaseStore.getState().reset();
+  useGitWorktreeStore.getState().reset();
+  useSubmoduleStore.getState().reset();
   useGraphStore.getState().resetGraph(repositoryId);
 
   postMessageToExtension(
@@ -103,6 +132,8 @@ export function selectRepository(repositoryId: string): void {
   );
 
   requestCommitsPage({ repositoryId });
+  requestGitWorktreeList(repositoryId);
+  requestSubmoduleList(repositoryId);
 }
 
 /**
@@ -389,6 +420,142 @@ export function requestDiscardWorktree(
 }
 
 /**
+ * Requests the list of linked Git worktrees for a repository.
+ */
+export function requestGitWorktreeList(repositoryId?: string): string | null {
+  const resolvedRepoId =
+    repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!resolvedRepoId) {
+    return null;
+  }
+
+  const requestId = `worktree-list-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  postMessageToExtension(
+    createMessage<'worktree.list.request', GitWorktreeListRequestPayload>(
+      'worktree.list.request',
+      { repositoryId: resolvedRepoId },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+/**
+ * Adds a linked Git worktree.
+ */
+export function requestAddGitWorktree(
+  payload: Omit<GitWorktreeAddRequestPayload, 'repositoryId'> & { repositoryId?: string },
+): string | null {
+  const repositoryId =
+    payload.repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!repositoryId) {
+    return null;
+  }
+
+  const requestId = `worktree-add-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  useOperationStore.getState().startOperation(requestId, t('worktree.create'));
+  postMessageToExtension(
+    createMessage<'worktree.add.request', GitWorktreeAddRequestPayload>(
+      'worktree.add.request',
+      { ...payload, repositoryId },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+/**
+ * Removes a linked Git worktree.
+ */
+export function requestRemoveGitWorktree(
+  payload: Omit<GitWorktreeRemoveRequestPayload, 'repositoryId'> & { repositoryId?: string },
+): string | null {
+  const repositoryId =
+    payload.repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!repositoryId) {
+    return null;
+  }
+
+  const requestId = `worktree-remove-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  useOperationStore.getState().startOperation(requestId, t('worktree.remove'));
+  postMessageToExtension(
+    createMessage<'worktree.remove.request', GitWorktreeRemoveRequestPayload>(
+      'worktree.remove.request',
+      { ...payload, repositoryId },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+/**
+ * Opens a linked worktree in a new VS Code window.
+ */
+export function requestOpenGitWorktreeInNewWindow(
+  payload: Omit<GitWorktreeOpenRequestPayload, 'repositoryId'> & { repositoryId?: string },
+): string | null {
+  const repositoryId =
+    payload.repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!repositoryId) {
+    return null;
+  }
+
+  const requestId = `worktree-open-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  postMessageToExtension(
+    createMessage<'worktree.open.request', GitWorktreeOpenRequestPayload>(
+      'worktree.open.request',
+      { ...payload, repositoryId },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+/**
+ * Requests configured submodules and their current state.
+ */
+export function requestSubmoduleList(repositoryId?: string): string | null {
+  const resolvedRepoId =
+    repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!resolvedRepoId) {
+    return null;
+  }
+
+  const requestId = `submodule-list-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  postMessageToExtension(
+    createMessage<'submodule.list.request', SubmoduleListRequestPayload>(
+      'submodule.list.request',
+      { repositoryId: resolvedRepoId },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+/**
+ * Opens a submodule repository as a separate graph.
+ */
+export function requestOpenSubmodule(
+  payload: Omit<SubmoduleOpenRequestPayload, 'repositoryId'> & { repositoryId?: string },
+): string | null {
+  const repositoryId =
+    payload.repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!repositoryId) {
+    return null;
+  }
+
+  const requestId = `submodule-open-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  postMessageToExtension(
+    createMessage<'submodule.open.request', SubmoduleOpenRequestPayload>(
+      'submodule.open.request',
+      { ...payload, repositoryId },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+/**
  * Creates (or amends) a commit from staged changes in the active repository.
  */
 export function requestCreateCommit(
@@ -511,7 +678,12 @@ export function requestGraphRefresh(hard = false): void {
  * Requests fetch operation from remote(s) to refresh commits from remote.
  */
 export function requestFetch(
-  options: { repositoryId?: string; remote?: string; prune?: boolean } = {},
+  options: {
+    repositoryId?: string;
+    remote?: string;
+    prune?: boolean;
+    all?: boolean;
+  } = {},
 ): string | null {
   const repositoryId =
     options.repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
@@ -521,6 +693,7 @@ export function requestFetch(
 
   useGraphStore.getState().setIsFetching(true);
   const requestId = `fetch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  useOperationStore.getState().startOperation(requestId, 'Fetching from remote...');
   postMessageToExtension(
     createMessage<'operation.fetch.request', OperationFetchRequestPayload>(
       'operation.fetch.request',
@@ -528,7 +701,191 @@ export function requestFetch(
         repositoryId,
         remote: options.remote,
         prune: options.prune ?? true,
+        ...(options.all !== undefined ? { all: options.all } : {}),
       },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+export function requestPull(
+  payload: Omit<OperationPullRequestPayload, 'repositoryId'> & { repositoryId?: string },
+): string | null {
+  const repositoryId =
+    payload.repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!repositoryId) {
+    return null;
+  }
+
+  useGraphStore.getState().setIsFetching(true);
+  const requestId = `pull-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  useOperationStore.getState().startOperation(requestId, 'Pulling from remote...');
+  postMessageToExtension(
+    createMessage<'operation.pull.request', OperationPullRequestPayload>(
+      'operation.pull.request',
+      { ...payload, repositoryId },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+export function requestRemoteList(repositoryId?: string): string | null {
+  const resolvedRepoId =
+    repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!resolvedRepoId) {
+    return null;
+  }
+
+  useRemoteStore.getState().startLoading(resolvedRepoId);
+  const requestId = `remote-list-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  postMessageToExtension(
+    createMessage<'remote.list.request', RemoteListRequestPayload>(
+      'remote.list.request',
+      { repositoryId: resolvedRepoId },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+export function requestAddRemote(
+  payload: Omit<RemoteAddRequestPayload, 'repositoryId'> & { repositoryId?: string },
+): string | null {
+  const repositoryId =
+    payload.repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!repositoryId) {
+    return null;
+  }
+
+  const requestId = `remote-add-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  useOperationStore.getState().startOperation(requestId, 'Adding remote...');
+  postMessageToExtension(
+    createMessage<'remote.add.request', RemoteAddRequestPayload>(
+      'remote.add.request',
+      { ...payload, repositoryId },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+export function requestRemoveRemote(
+  payload: Omit<RemoteRemoveRequestPayload, 'repositoryId'> & { repositoryId?: string },
+): string | null {
+  const repositoryId =
+    payload.repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!repositoryId) {
+    return null;
+  }
+
+  const requestId = `remote-remove-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  useOperationStore.getState().startOperation(requestId, 'Removing remote...');
+  postMessageToExtension(
+    createMessage<'remote.remove.request', RemoteRemoveRequestPayload>(
+      'remote.remove.request',
+      { ...payload, repositoryId },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+export function requestRenameRemote(
+  payload: Omit<RemoteRenameRequestPayload, 'repositoryId'> & { repositoryId?: string },
+): string | null {
+  const repositoryId =
+    payload.repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!repositoryId) {
+    return null;
+  }
+
+  const requestId = `remote-rename-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  useOperationStore.getState().startOperation(requestId, 'Renaming remote...');
+  postMessageToExtension(
+    createMessage<'remote.rename.request', RemoteRenameRequestPayload>(
+      'remote.rename.request',
+      { ...payload, repositoryId },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+export function requestSetRemoteUrl(
+  payload: Omit<RemoteSetUrlRequestPayload, 'repositoryId'> & { repositoryId?: string },
+): string | null {
+  const repositoryId =
+    payload.repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!repositoryId) {
+    return null;
+  }
+
+  const requestId = `remote-set-url-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  useOperationStore.getState().startOperation(requestId, 'Updating remote URL...');
+  postMessageToExtension(
+    createMessage<'remote.setUrl.request', RemoteSetUrlRequestPayload>(
+      'remote.setUrl.request',
+      { ...payload, repositoryId },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+export function requestReflogRecent(limit = 20, repositoryId?: string): string | null {
+  const resolvedRepoId =
+    repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!resolvedRepoId) {
+    return null;
+  }
+
+  const requestId = `reflog-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  postMessageToExtension(
+    createMessage<'reflog.recent.request', ReflogRecentRequestPayload>(
+      'reflog.recent.request',
+      { repositoryId: resolvedRepoId, limit },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+export function requestUndo(
+  payload: Omit<OperationUndoRequestPayload, 'repositoryId'> & { repositoryId?: string },
+): string | null {
+  const repositoryId =
+    payload.repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!repositoryId) {
+    return null;
+  }
+
+  const requestId = `undo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  useGraphStore.getState().setIsFetching(true);
+  useOperationStore.getState().startOperation(requestId, 'Undoing last operation...');
+  postMessageToExtension(
+    createMessage<'operation.undo.request', OperationUndoRequestPayload>(
+      'operation.undo.request',
+      { ...payload, repositoryId },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+export function requestSyncStatus(repositoryId?: string): string | null {
+  const resolvedRepoId =
+    repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!resolvedRepoId) {
+    return null;
+  }
+
+  const requestId = `sync-status-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  postMessageToExtension(
+    createMessage<'repository.syncStatus.request', RepositorySyncStatusRequestPayload>(
+      'repository.syncStatus.request',
+      { repositoryId: resolvedRepoId },
       { id: requestId, requestId },
     ),
   );
@@ -657,6 +1014,7 @@ export function requestPushBranch(
 
   useGraphStore.getState().setIsFetching(true);
   const requestId = `branch-push-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  useOperationStore.getState().startOperation(requestId, 'Pushing branch...');
   postMessageToExtension(
     createMessage<'operation.push.request', OperationPushRequestPayload>(
       'operation.push.request',
@@ -828,6 +1186,82 @@ export function requestRebaseAction(
 }
 
 /**
+ * Requests an interactive rebase plan between the target commit and HEAD.
+ */
+export function requestInteractiveRebasePlan(onto: string, repositoryId?: string): string | null {
+  const resolvedRepoId =
+    repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!resolvedRepoId) {
+    return null;
+  }
+
+  const requestId = `interactive-rebase-plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  postMessageToExtension(
+    createMessage<'rebase.interactive.plan.request', RebaseInteractivePlanRequestPayload>(
+      'rebase.interactive.plan.request',
+      { repositoryId: resolvedRepoId, onto },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+export function requestInteractiveRebaseStart(
+  payload: Omit<RebaseInteractiveStartRequestPayload, 'repositoryId'> & { repositoryId?: string },
+): string | null {
+  const repositoryId =
+    payload.repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!repositoryId) {
+    return null;
+  }
+
+  const requestId = `interactive-rebase-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  useInteractiveRebaseStore.getState().startRebase(requestId);
+  postMessageToExtension(
+    createMessage<'rebase.interactive.start.request', RebaseInteractiveStartRequestPayload>(
+      'rebase.interactive.start.request',
+      {
+        ...payload,
+        repositoryId,
+      },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+export function requestInteractiveRebaseAction(
+  action: 'continue' | 'abort' | 'skip',
+  payload: Partial<RebaseInteractiveActionRequestPayload> = {},
+): string | null {
+  const repositoryId =
+    payload.repositoryId ?? useRepositoryStore.getState().activeRepositoryId ?? undefined;
+  if (!repositoryId) {
+    return null;
+  }
+
+  const requestId = `interactive-rebase-${action}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const store = useInteractiveRebaseStore.getState();
+  if (action === 'continue') {
+    store.continueRebase(requestId);
+  } else if (action === 'abort') {
+    store.abortRebase(requestId);
+  } else {
+    store.skipRebase(requestId);
+  }
+
+  const type = `rebase.interactive.${action}` as const;
+  postMessageToExtension(
+    createMessage<typeof type, RebaseInteractiveActionRequestPayload>(
+      type,
+      { repositoryId },
+      { id: requestId, requestId },
+    ),
+  );
+  return requestId;
+}
+
+/**
  * Requests a guarded cherry-pick of the specified commit.
  */
 export function requestCherryPick(
@@ -943,6 +1377,45 @@ export function requestReset(
 
 let lastInvalidationTime = 0;
 let lastInvalidatedRepoId: string | null = null;
+let pendingRevealSha: string | null = null;
+let pendingRevealSearchAttempted = false;
+
+export function resetPendingReveal(): void {
+  pendingRevealSha = null;
+  pendingRevealSearchAttempted = false;
+}
+
+function applyPendingReveal(): void {
+  const sha = pendingRevealSha;
+  if (!sha) {
+    return;
+  }
+
+  const graph = useGraphStore.getState();
+  if (graph.commits.some((commit) => commit.sha === sha || commit.shortSha === sha)) {
+    pendingRevealSha = null;
+    pendingRevealSearchAttempted = false;
+    graph.setRevealCommitSha(sha);
+    useSelectionStore.getState().selectCommit(sha);
+    return;
+  }
+
+  if (graph.hasMore) {
+    requestNextCommitsPage();
+    return;
+  }
+
+  if (pendingRevealSearchAttempted) {
+    pendingRevealSha = null;
+    pendingRevealSearchAttempted = false;
+    return;
+  }
+
+  pendingRevealSearchAttempted = true;
+  graph.setSearchType('hash');
+  graph.setSearchTerm(sha);
+  requestRepositorySearch(sha, 'hash');
+}
 
 export function resetInvalidationThrottle(): void {
   lastInvalidationTime = 0;
@@ -955,7 +1428,9 @@ export function resetInvalidationThrottle(): void {
 export function routeExtensionMessage(envelope: ExtensionToWebviewMessage): void {
   switch (envelope.type) {
     case 'app.bootstrap': {
-      const { repositories, activeRepositoryId, config, initialFilterPath } = envelope.payload;
+      const { repositories, activeRepositoryId, config, initialFilterPath, locale } =
+        envelope.payload;
+      setLocale(locale);
       if (config) {
         useConfigStore.getState().updateConfig(config);
       }
@@ -968,7 +1443,14 @@ export function routeExtensionMessage(envelope: ExtensionToWebviewMessage): void
       if (resolvedActiveId) {
         useGraphStore.getState().setActiveRepoId(resolvedActiveId);
         requestCommitsPage({ repositoryId: resolvedActiveId });
+        requestGitWorktreeList(resolvedActiveId);
+        requestSubmoduleList(resolvedActiveId);
       }
+      break;
+    }
+
+    case 'view.config.changed': {
+      useConfigStore.getState().updateConfig(envelope.payload);
       break;
     }
 
@@ -997,20 +1479,29 @@ export function routeExtensionMessage(envelope: ExtensionToWebviewMessage): void
           useGraphStore.getState().resetGraph(newActiveId);
           requestCommitsPage({ repositoryId: newActiveId });
         }
+        requestGitWorktreeList(newActiveId);
+        requestSubmoduleList(newActiveId);
       }
       break;
     }
 
     case 'repository.changed': {
       const { activeRepositoryId } = envelope.payload;
+      useRemoteStore.getState().reset();
+      useOperationStore.getState().reset();
       const repoStore = useRepositoryStore.getState();
       repoStore.setActiveRepositoryId(activeRepositoryId);
       useSelectionStore.getState().clearSelection();
       useDetailsStore.getState().clearDetails();
       useDiffStore.getState().clearDiff();
       useWorktreeStore.getState().reset();
+      useInteractiveRebaseStore.getState().reset();
+      useGitWorktreeStore.getState().reset();
+      useSubmoduleStore.getState().reset();
       useGraphStore.getState().resetGraph(activeRepositoryId);
       requestCommitsPage({ repositoryId: activeRepositoryId });
+      requestGitWorktreeList(activeRepositoryId);
+      requestSubmoduleList(activeRepositoryId);
       break;
     }
 
@@ -1025,6 +1516,9 @@ export function routeExtensionMessage(envelope: ExtensionToWebviewMessage): void
         totalChunks,
         isLastChunk,
       });
+      if (isLastChunk !== false) {
+        applyPendingReveal();
+      }
       break;
     }
 
@@ -1045,6 +1539,18 @@ export function routeExtensionMessage(envelope: ExtensionToWebviewMessage): void
       break;
     }
 
+    case 'worktree.list.result': {
+      const { repositoryId, worktrees, currentPath } = envelope.payload;
+      useGitWorktreeStore.getState().receiveWorktrees(repositoryId, worktrees, currentPath);
+      break;
+    }
+
+    case 'submodule.list.result': {
+      const { repositoryId, submodules } = envelope.payload;
+      useSubmoduleStore.getState().receiveSubmodules(repositoryId, submodules);
+      break;
+    }
+
     case 'stash.list.result': {
       const { repositoryId, stashes } = envelope.payload;
       useWorktreeStore.getState().receiveStashes(repositoryId, stashes);
@@ -1059,6 +1565,20 @@ export function routeExtensionMessage(envelope: ExtensionToWebviewMessage): void
         requestId,
       });
       useGraphStore.getState().setSearchMatches(commits.map((c) => c.sha));
+      applyPendingReveal();
+      break;
+    }
+
+    case 'graph.reveal.commit': {
+      const { repositoryId, sha } = envelope.payload;
+      const activeRepoId = useRepositoryStore.getState().activeRepositoryId;
+      pendingRevealSha = sha;
+      pendingRevealSearchAttempted = false;
+      if (repositoryId && repositoryId !== activeRepoId) {
+        selectRepository(repositoryId);
+      } else {
+        applyPendingReveal();
+      }
       break;
     }
 
@@ -1085,6 +1605,8 @@ export function routeExtensionMessage(envelope: ExtensionToWebviewMessage): void
     }
 
     case 'operation.progress': {
+      useOperationStore.getState().updateProgress(envelope.payload);
+      useInteractiveRebaseStore.getState().receiveProgress(envelope.payload);
       if (envelope.payload.progress < 1.0) {
         useGraphStore.getState().setIsFetching(true);
       }
@@ -1092,16 +1614,58 @@ export function routeExtensionMessage(envelope: ExtensionToWebviewMessage): void
     }
 
     case 'operation.result': {
+      useOperationStore.getState().receiveResult(envelope.payload);
+      useInteractiveRebaseStore.getState().receiveResult(envelope.payload);
       useGraphStore.getState().setIsFetching(false);
-      if (!envelope.payload.success && envelope.payload.error) {
+      if (
+        !envelope.payload.success &&
+        envelope.payload.error &&
+        envelope.payload.error.code !== AppErrorCode.OPERATION_CANCELLED
+      ) {
         useGraphStore.getState().setError(envelope.payload.error.message);
       }
+      break;
+    }
+
+    case 'remote.list.result': {
+      useRemoteStore
+        .getState()
+        .receiveRemotes(envelope.payload.repositoryId, envelope.payload.remotes);
+      break;
+    }
+
+    case 'reflog.recent.result': {
+      useOperationStore.getState().receiveReflog(envelope.payload.entries);
+      break;
+    }
+
+    case 'rebase.interactive.plan.result': {
+      const { entries, onto, error } = envelope.payload;
+      useInteractiveRebaseStore.getState().receivePlan(entries, onto, error);
+      break;
+    }
+
+    case 'repository.syncStatus.result': {
+      useRepositoryStore.getState().setSyncStatus(envelope.payload.status);
+      break;
+    }
+
+    case 'ui.dialog.open': {
+      useUiStore.getState().requestDialog(envelope.payload.dialog);
       break;
     }
 
     case 'notification.error': {
       useGraphStore.getState().setIsFetching(false);
       const { message, requestId } = envelope.payload;
+      if (requestId?.startsWith('worktree-list-')) {
+        useGitWorktreeStore.getState().setError(message);
+        break;
+      }
+      if (requestId?.startsWith('submodule-list-')) {
+        useSubmoduleStore.getState().setError(message);
+        break;
+      }
       useGraphStore.getState().setError(message, requestId);
       break;
     }

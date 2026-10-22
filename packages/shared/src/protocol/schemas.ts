@@ -8,6 +8,13 @@ import {
   StashEntrySchema,
   TagTypeSchema,
   WorktreeStatusSchema,
+  RemoteInfoSchema,
+  ReflogEntrySchema,
+  RepositorySyncStatusSchema,
+  OperationUndoInfoSchema,
+  RebasePlanEntrySchema,
+  GitWorktreeInfoSchema,
+  SubmoduleInfoSchema,
 } from '../domain';
 import { AppErrorCodeSchema, SerializedAppErrorSchema, AppError, AppErrorCode } from '../errors';
 
@@ -123,6 +130,37 @@ export const WorktreeDiscardRequestPayloadSchema = WorktreePathsSchema.extend({
   noConfirm: z.boolean().optional(),
 });
 
+export const GitWorktreeListRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+});
+
+export const GitWorktreeAddRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+  path: z.string().min(1),
+  branch: z.string().min(1).optional(),
+  newBranch: z.string().min(1).optional(),
+});
+
+export const GitWorktreeRemoveRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+  path: z.string().min(1),
+  force: z.boolean().optional(),
+});
+
+export const GitWorktreeOpenRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+  path: z.string().min(1),
+});
+
+export const SubmoduleListRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+});
+
+export const SubmoduleOpenRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+  path: z.string().min(1),
+});
+
 export const OperationCommitCreateRequestPayloadSchema = z.object({
   repositoryId: z.string().min(1),
   message: z.string().min(1),
@@ -166,6 +204,8 @@ export const OperationCheckoutTargetTypeSchema = z.enum([
 
 export const OperationMergeFastForwardModeSchema = z.enum(['ff', 'no-ff', 'ff-only']);
 export const OperationResetModeSchema = z.enum(['soft', 'mixed', 'hard']);
+export const OperationPullStrategySchema = z.enum(['merge', 'rebase', 'ff-only']);
+export const WebviewDialogKindSchema = z.enum(['fetch', 'pull', 'push', 'remotes', 'worktrees']);
 
 export const OperationCheckoutRequestPayloadSchema = z.object({
   repositoryId: z.string().min(1),
@@ -205,6 +245,8 @@ export const OperationPushRequestPayloadSchema = z.object({
   remote: z.string().min(1).optional(),
   setUpstream: z.boolean().optional(),
   force: z.boolean().optional(),
+  forceWithLease: z.boolean().optional(),
+  tags: z.boolean().optional(),
 });
 
 export const OperationTagCreateRequestPayloadSchema = z.object({
@@ -251,6 +293,22 @@ export const OperationRebaseActionRequestPayloadSchema = z.object({
   repositoryId: z.string().min(1),
 });
 
+export const RebaseInteractivePlanRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+  onto: z.string().min(1),
+});
+
+export const RebaseInteractiveStartRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+  onto: z.string().min(1).optional(),
+  plan: z.array(RebasePlanEntrySchema).min(1).max(500),
+  confirmedPublishedBranch: z.boolean().optional(),
+});
+
+export const RebaseInteractiveActionRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+});
+
 export const OperationCherryPickRequestPayloadSchema = z.object({
   repositoryId: z.string().min(1),
   commit: z.string().min(1),
@@ -283,6 +341,59 @@ export const OperationFetchRequestPayloadSchema = z.object({
   repositoryId: z.string().min(1),
   remote: z.string().optional(),
   prune: z.boolean().optional(),
+  all: z.boolean().optional(),
+});
+
+export const OperationPullRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+  remote: z.string().optional(),
+  branch: z.string().optional(),
+  strategy: OperationPullStrategySchema.optional(),
+  autostash: z.boolean().optional(),
+});
+
+export const RemoteListRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+});
+
+export const RemoteAddRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+  name: z.string().min(1),
+  url: z.string().min(1),
+});
+
+export const RemoteRemoveRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+  name: z.string().min(1),
+});
+
+export const RemoteRenameRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+  oldName: z.string().min(1),
+  newName: z.string().min(1),
+});
+
+export const RemoteSetUrlRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+  name: z.string().min(1),
+  url: z.string().min(1),
+  push: z.boolean().optional(),
+});
+
+export const ReflogRecentRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+  limit: z.number().int().min(1).max(100).optional(),
+});
+
+export const OperationUndoRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
+  reflogIndex: z.number().int().nonnegative().optional(),
+  expectedSha: z.string().min(1).optional(),
+  operationId: z.string().optional(),
+});
+
+export const RepositorySyncStatusRequestPayloadSchema = z.object({
+  repositoryId: z.string().min(1),
 });
 
 export const OperationCancelRequestPayloadSchema = z.object({
@@ -298,6 +409,7 @@ export const AppBootstrapPayloadSchema = z.object({
   repositories: z.array(z.union([RepositoryDescriptorSchema, RepositoryPlaceholderItemSchema])),
   activeRepositoryId: z.string().optional(),
   theme: z.string().optional(),
+  locale: z.string().optional(),
   initialFilterPath: z.string().optional(),
   config: z
     .object({
@@ -308,6 +420,11 @@ export const AppBootstrapPayloadSchema = z.object({
       dateType: z.enum(['relative', 'absolute', 'default']).optional(),
       pageSize: z.number().int().positive().optional(),
       commitOrdering: CommitOrderingSchema.optional(),
+      compactMode: z.boolean().optional(),
+      showMinimap: z.boolean().optional(),
+      showStatusBarItem: z.boolean().optional(),
+      blameEnabled: z.boolean().optional(),
+      blameFormat: z.string().optional(),
     })
     .optional(),
 });
@@ -326,8 +443,16 @@ export const ViewConfigUpdatePayloadSchema = z.object({
   showTags: z.boolean().optional(),
   dateType: z.enum(['relative', 'absolute', 'default']).optional(),
   pageSize: z.number().int().positive().optional(),
+  compactMode: z.boolean().optional(),
+  showMinimap: z.boolean().optional(),
+  showStatusBarItem: z.boolean().optional(),
+  blameEnabled: z.boolean().optional(),
+  blameFormat: z.string().optional(),
 });
 export type ViewConfigUpdatePayload = z.infer<typeof ViewConfigUpdatePayloadSchema>;
+
+export const ViewConfigChangedPayloadSchema = ViewConfigUpdatePayloadSchema;
+export type ViewConfigChangedPayload = z.infer<typeof ViewConfigChangedPayloadSchema>;
 
 export const RepositoriesListResultPayloadSchema = z.object({
   requestId: z.string().optional(),
@@ -373,6 +498,11 @@ export const GraphInvalidatedPayloadSchema = z.object({
   repositoryId: z.string().optional(),
 });
 
+export const GraphRevealCommitPayloadSchema = z.object({
+  repositoryId: z.string().optional(),
+  sha: z.string().min(1),
+});
+
 export const SearchResultPayloadSchema = z.object({
   requestId: z.string().optional(),
   repositoryId: z.string().min(1),
@@ -385,6 +515,19 @@ export const WorktreeStatusResultPayloadSchema = z.object({
   requestId: z.string().optional(),
   repositoryId: z.string().min(1),
   status: WorktreeStatusSchema,
+});
+
+export const GitWorktreeListResultPayloadSchema = z.object({
+  requestId: z.string().optional(),
+  repositoryId: z.string().min(1),
+  worktrees: z.array(GitWorktreeInfoSchema),
+  currentPath: z.string().min(1).optional(),
+});
+
+export const SubmoduleListResultPayloadSchema = z.object({
+  requestId: z.string().optional(),
+  repositoryId: z.string().min(1),
+  submodules: z.array(SubmoduleInfoSchema),
 });
 
 export const StashListResultPayloadSchema = z.object({
@@ -404,6 +547,36 @@ export const OperationResultPayloadSchema = z.object({
   success: z.boolean(),
   error: SerializedAppErrorSchema.optional(),
   data: z.unknown().optional(),
+  undo: OperationUndoInfoSchema.optional(),
+});
+
+export const RemoteListResultPayloadSchema = z.object({
+  requestId: z.string().optional(),
+  repositoryId: z.string().min(1),
+  remotes: z.array(RemoteInfoSchema),
+});
+
+export const ReflogRecentResultPayloadSchema = z.object({
+  requestId: z.string().optional(),
+  repositoryId: z.string().min(1),
+  entries: z.array(ReflogEntrySchema),
+});
+
+export const RebaseInteractivePlanResultPayloadSchema = z.object({
+  requestId: z.string().optional(),
+  repositoryId: z.string().min(1),
+  onto: z.string().min(1),
+  entries: z.array(RebasePlanEntrySchema),
+  error: z.string().optional(),
+});
+
+export const RepositorySyncStatusResultPayloadSchema = z.object({
+  requestId: z.string().optional(),
+  status: RepositorySyncStatusSchema,
+});
+
+export const UiDialogOpenPayloadSchema = z.object({
+  dialog: WebviewDialogKindSchema,
 });
 
 export const NotificationErrorPayloadSchema = z.object({
@@ -430,6 +603,12 @@ export const WebviewToExtensionMessageSchema = z.discriminatedUnion('type', [
   createMessageEnvelopeSchema('worktree.stage.request', WorktreeStageRequestPayloadSchema),
   createMessageEnvelopeSchema('worktree.unstage.request', WorktreeUnstageRequestPayloadSchema),
   createMessageEnvelopeSchema('worktree.discard.request', WorktreeDiscardRequestPayloadSchema),
+  createMessageEnvelopeSchema('worktree.list.request', GitWorktreeListRequestPayloadSchema),
+  createMessageEnvelopeSchema('worktree.add.request', GitWorktreeAddRequestPayloadSchema),
+  createMessageEnvelopeSchema('worktree.remove.request', GitWorktreeRemoveRequestPayloadSchema),
+  createMessageEnvelopeSchema('worktree.open.request', GitWorktreeOpenRequestPayloadSchema),
+  createMessageEnvelopeSchema('submodule.list.request', SubmoduleListRequestPayloadSchema),
+  createMessageEnvelopeSchema('submodule.open.request', SubmoduleOpenRequestPayloadSchema),
   createMessageEnvelopeSchema(
     'operation.commit.create.request',
     OperationCommitCreateRequestPayloadSchema,
@@ -455,6 +634,19 @@ export const WebviewToExtensionMessageSchema = z.discriminatedUnion('type', [
     OperationBranchDeleteRequestPayloadSchema,
   ),
   createMessageEnvelopeSchema('operation.push.request', OperationPushRequestPayloadSchema),
+  createMessageEnvelopeSchema('operation.pull.request', OperationPullRequestPayloadSchema),
+  createMessageEnvelopeSchema('operation.fetch.request', OperationFetchRequestPayloadSchema),
+  createMessageEnvelopeSchema('remote.list.request', RemoteListRequestPayloadSchema),
+  createMessageEnvelopeSchema('remote.add.request', RemoteAddRequestPayloadSchema),
+  createMessageEnvelopeSchema('remote.remove.request', RemoteRemoveRequestPayloadSchema),
+  createMessageEnvelopeSchema('remote.rename.request', RemoteRenameRequestPayloadSchema),
+  createMessageEnvelopeSchema('remote.setUrl.request', RemoteSetUrlRequestPayloadSchema),
+  createMessageEnvelopeSchema('reflog.recent.request', ReflogRecentRequestPayloadSchema),
+  createMessageEnvelopeSchema('operation.undo.request', OperationUndoRequestPayloadSchema),
+  createMessageEnvelopeSchema(
+    'repository.syncStatus.request',
+    RepositorySyncStatusRequestPayloadSchema,
+  ),
   createMessageEnvelopeSchema(
     'operation.tag.create.request',
     OperationTagCreateRequestPayloadSchema,
@@ -480,6 +672,26 @@ export const WebviewToExtensionMessageSchema = z.discriminatedUnion('type', [
   createMessageEnvelopeSchema(
     'operation.rebase.skip.request',
     OperationRebaseActionRequestPayloadSchema,
+  ),
+  createMessageEnvelopeSchema(
+    'rebase.interactive.plan.request',
+    RebaseInteractivePlanRequestPayloadSchema,
+  ),
+  createMessageEnvelopeSchema(
+    'rebase.interactive.start.request',
+    RebaseInteractiveStartRequestPayloadSchema,
+  ),
+  createMessageEnvelopeSchema(
+    'rebase.interactive.continue',
+    RebaseInteractiveActionRequestPayloadSchema,
+  ),
+  createMessageEnvelopeSchema(
+    'rebase.interactive.abort',
+    RebaseInteractiveActionRequestPayloadSchema,
+  ),
+  createMessageEnvelopeSchema(
+    'rebase.interactive.skip',
+    RebaseInteractiveActionRequestPayloadSchema,
   ),
   createMessageEnvelopeSchema(
     'operation.cherryPick.request',
@@ -511,7 +723,6 @@ export const WebviewToExtensionMessageSchema = z.discriminatedUnion('type', [
     OperationSequencerActionRequestPayloadSchema,
   ),
   createMessageEnvelopeSchema('operation.reset.request', OperationResetRequestPayloadSchema),
-  createMessageEnvelopeSchema('operation.fetch.request', OperationFetchRequestPayloadSchema),
   createMessageEnvelopeSchema('operation.cancel.request', OperationCancelRequestPayloadSchema),
   createMessageEnvelopeSchema('view.config.update', ViewConfigUpdatePayloadSchema),
 ]);
@@ -525,12 +736,27 @@ export const ExtensionToWebviewMessageSchema = z.discriminatedUnion('type', [
   createMessageEnvelopeSchema('commit.diff.result', CommitDiffResultPayloadSchema),
   createMessageEnvelopeSchema('search.result', SearchResultPayloadSchema),
   createMessageEnvelopeSchema('worktree.status.result', WorktreeStatusResultPayloadSchema),
+  createMessageEnvelopeSchema('worktree.list.result', GitWorktreeListResultPayloadSchema),
+  createMessageEnvelopeSchema('submodule.list.result', SubmoduleListResultPayloadSchema),
   createMessageEnvelopeSchema('stash.list.result', StashListResultPayloadSchema),
   createMessageEnvelopeSchema('graph.invalidated', GraphInvalidatedPayloadSchema),
+  createMessageEnvelopeSchema('graph.reveal.commit', GraphRevealCommitPayloadSchema),
   createMessageEnvelopeSchema('operation.progress', OperationProgressPayloadSchema),
   createMessageEnvelopeSchema('operation.result', OperationResultPayloadSchema),
+  createMessageEnvelopeSchema('remote.list.result', RemoteListResultPayloadSchema),
+  createMessageEnvelopeSchema('reflog.recent.result', ReflogRecentResultPayloadSchema),
+  createMessageEnvelopeSchema(
+    'rebase.interactive.plan.result',
+    RebaseInteractivePlanResultPayloadSchema,
+  ),
+  createMessageEnvelopeSchema(
+    'repository.syncStatus.result',
+    RepositorySyncStatusResultPayloadSchema,
+  ),
+  createMessageEnvelopeSchema('ui.dialog.open', UiDialogOpenPayloadSchema),
   createMessageEnvelopeSchema('notification.error', NotificationErrorPayloadSchema),
   createMessageEnvelopeSchema('filter.path.set', FilterPathSetPayloadSchema),
+  createMessageEnvelopeSchema('view.config.changed', ViewConfigChangedPayloadSchema),
 ]);
 
 export const ProtocolMessageSchema = z.union([

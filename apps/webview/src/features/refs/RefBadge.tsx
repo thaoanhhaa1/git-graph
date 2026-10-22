@@ -13,6 +13,8 @@ export interface RefBadgeItem {
   tagType?: 'lightweight' | 'annotated';
   targetSha?: string;
   remotes?: string[];
+  /** Path of the worktree where this branch is checked out, when not the current one. */
+  worktreePath?: string;
 }
 
 export interface RefBadgeProps {
@@ -24,9 +26,14 @@ export interface RefBadgeProps {
   isCompanion?: boolean;
   remoteName?: string;
   remotes?: string[];
+  worktreePath?: string;
   onClick?: (refItem: RefBadgeItem, e: React.MouseEvent) => void;
   onDoubleClick?: (refItem: RefBadgeItem, e: React.MouseEvent) => void;
   onContextMenu?: (refItem: RefBadgeItem, e: React.MouseEvent) => void;
+  draggable?: boolean;
+  onDragStart?: (refItem: RefBadgeItem, e: React.DragEvent<HTMLSpanElement>) => void;
+  onDragEnd?: (refItem: RefBadgeItem, e: React.DragEvent<HTMLSpanElement>) => void;
+  onTouchStart?: (refItem: RefBadgeItem, e: React.TouchEvent<HTMLSpanElement>) => void;
 }
 
 /**
@@ -67,7 +74,11 @@ function getBadgeClassModifier(type: RefBadgeType): string {
 /**
  * Builds an accessible and informative tooltip text for the ref badge.
  */
-function buildRefTooltip(refItem: RefBadgeItem, remotes: string[] = []): string {
+function buildRefTooltip(
+  refItem: RefBadgeItem,
+  remotes: string[] = [],
+  worktreePath?: string,
+): string {
   const parts: string[] = [];
   const displayName = refItem.fullName || refItem.name;
 
@@ -92,6 +103,10 @@ function buildRefTooltip(refItem: RefBadgeItem, remotes: string[] = []): string 
 
   if (refItem.targetSha) {
     parts.push(`Target: ${refItem.targetSha}`);
+  }
+
+  if (worktreePath) {
+    parts.push(`Worktree: ${worktreePath}`);
   }
 
   return parts.join(' • ');
@@ -208,9 +223,14 @@ export const RefBadge: React.FC<RefBadgeProps> = React.memo(
     isCompanion,
     remoteName,
     remotes,
+    worktreePath,
     onClick,
     onDoubleClick,
     onContextMenu,
+    draggable = false,
+    onDragStart,
+    onDragEnd,
+    onTouchStart,
   }) => {
     const isCurrent = Boolean(refItem.isCurrent);
     const badgeModifier = getBadgeClassModifier(refItem.type);
@@ -222,7 +242,8 @@ export const RefBadge: React.FC<RefBadgeProps> = React.memo(
           : remoteName
             ? [remoteName]
             : [];
-    const tooltip = buildRefTooltip(refItem, remotesList);
+    const resolvedWorktreePath = worktreePath ?? refItem.worktreePath;
+    const tooltip = buildRefTooltip(refItem, remotesList, resolvedWorktreePath);
     const testIdName = originalName || refItem.name;
     const isHead = refItem.type === 'head';
     const isBranchType = refItem.type === 'localBranch' || refItem.type === 'branch';
@@ -281,6 +302,24 @@ export const RefBadge: React.FC<RefBadgeProps> = React.memo(
       onContextMenu?.(refItem, e);
     };
 
+    const handleDragStart = (e: React.DragEvent<HTMLSpanElement>) => {
+      if (!draggable) {
+        e.preventDefault();
+        return;
+      }
+      e.stopPropagation();
+      onDragStart?.(refItem, e);
+    };
+
+    const handleDragEnd = (e: React.DragEvent<HTMLSpanElement>) => {
+      onDragEnd?.(refItem, e);
+    };
+
+    const handleTouchStart = (e: React.TouchEvent<HTMLSpanElement>) => {
+      if (!draggable) return;
+      onTouchStart?.(refItem, e);
+    };
+
     return (
       <span className="ref-badge-wrapper">
         <span
@@ -289,11 +328,18 @@ export const RefBadge: React.FC<RefBadgeProps> = React.memo(
           aria-label={tooltip}
           data-testid={`ref-badge-${refItem.type}-${testIdName}`}
           data-ref-type={refItem.type}
+          data-ref-name={refItem.name}
+          data-ref-target-sha={refItem.targetSha}
           data-is-current={isCurrent ? 'true' : undefined}
+          data-draggable={draggable ? 'true' : undefined}
+          draggable={draggable || undefined}
           style={dynamicStyle}
           onClick={handleClick}
           onDoubleClick={handleDoubleClick}
           onContextMenu={handleContextMenu}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onTouchStart={handleTouchStart}
           role="button"
           tabIndex={0}
           onKeyDown={(e) => {
@@ -314,6 +360,16 @@ export const RefBadge: React.FC<RefBadgeProps> = React.memo(
             </span>
           )}
           <span className="ref-badge-name">{refItem.name}</span>
+          {resolvedWorktreePath && (
+            <span
+              className="ref-badge-worktree"
+              title={`Checked out in worktree: ${resolvedWorktreePath}`}
+              aria-label={`Checked out in worktree: ${resolvedWorktreePath}`}
+              data-testid={`ref-badge-worktree-${testIdName}`}
+            >
+              <Icon name="worktree" size={9} />
+            </span>
+          )}
           {remotesList.length > 0 && (
             <>
               <span className="ref-badge-divider" />

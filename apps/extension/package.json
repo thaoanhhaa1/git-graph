@@ -1,8 +1,8 @@
 {
   "name": "cts-git-graph",
   "displayName": "Git Graph - CTS",
-  "description": "View Git graph, branches, tags, and commits in VS Code",
-  "version": "0.2.1",
+  "description": "High-performance interactive Git graph, blame, rebase, worktrees, and remote operations for VS Code",
+  "version": "1.0.0",
   "publisher": "CTS",
   "icon": "resources/icon.png",
   "license": "MIT",
@@ -20,21 +20,31 @@
   },
   "categories": [
     "SCM Providers",
+    "Visualization",
     "Other"
   ],
   "keywords": [
     "git",
+    "git-graph",
     "graph",
+    "visualization",
     "history",
     "branches",
     "commits",
     "tags",
-    "diff"
+    "diff",
+    "blame",
+    "rebase",
+    "worktree",
+    "submodule"
   ],
   "activationEvents": [
-    "workspaceContains:.git"
+    "workspaceContains:.git",
+    "onCommand:gitGraph.toggleBlame",
+    "onCommand:gitGraph.viewLineHistory"
   ],
   "main": "./dist/extension.js",
+  "l10n": "./l10n",
   "contributes": {
     "commands": [
       {
@@ -53,6 +63,47 @@
         "command": "gitGraph.openFileAtRevision",
         "title": "Open File at Revision",
         "category": "Git Graph"
+      },
+      {
+        "command": "gitGraph.fetch",
+        "title": "Fetch from Remote",
+        "category": "Git Graph",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "gitGraph.pull",
+        "title": "Pull",
+        "category": "Git Graph",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "gitGraph.push",
+        "title": "Push",
+        "category": "Git Graph",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "gitGraph.manageRemotes",
+        "title": "Manage Remotes",
+        "category": "Git Graph",
+        "icon": "$(remote)"
+      },
+      {
+        "command": "gitGraph.manageWorktrees",
+        "title": "Manage Worktrees",
+        "category": "Git Graph",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "gitGraph.toggleBlame",
+        "title": "Toggle Git Blame Annotations",
+        "category": "Git Graph"
+      },
+      {
+        "command": "gitGraph.viewLineHistory",
+        "title": "View Line History",
+        "category": "Git Graph",
+        "icon": "$(history)"
       }
     ],
     "menus": {
@@ -65,6 +116,27 @@
         },
         {
           "command": "gitGraph.openFileAtRevision"
+        },
+        {
+          "command": "gitGraph.fetch"
+        },
+        {
+          "command": "gitGraph.pull"
+        },
+        {
+          "command": "gitGraph.push"
+        },
+        {
+          "command": "gitGraph.manageRemotes"
+        },
+        {
+          "command": "gitGraph.manageWorktrees"
+        },
+        {
+          "command": "gitGraph.toggleBlame"
+        },
+        {
+          "command": "gitGraph.viewLineHistory"
         }
       ],
       "scm/title": [
@@ -84,6 +156,16 @@
         {
           "command": "gitGraph.viewFileHistory",
           "group": "navigation"
+        },
+        {
+          "command": "gitGraph.viewLineHistory",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "gitGraph.viewLineHistory",
+          "group": "navigation@2"
         }
       ]
     },
@@ -121,6 +203,26 @@
           "type": "boolean",
           "default": true,
           "description": "Show tag references in the graph."
+        },
+        "gitGraph.showMinimap": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the vertical graph minimap overview next to the commit list."
+        },
+        "gitGraph.compactMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use compact 18px rows in the commit graph."
+        },
+        "gitGraph.blame.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show inline Git blame annotations after each line in the active editor."
+        },
+        "gitGraph.blame.format": {
+          "type": "string",
+          "default": "${author}, ${relativeDate} • ${subject}",
+          "description": "Inline blame annotation format. Placeholders: ${author}, ${relativeDate}, ${subject}, ${shortSha}, ${sha}."
         },
         "gitGraph.dateType": {
           "type": "string",
@@ -164,6 +266,7 @@
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^3.1.0",
     "typescript": "^5.5.4",
     "vitest": "^2.0.5"
   }

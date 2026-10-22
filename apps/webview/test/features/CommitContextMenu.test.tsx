@@ -198,6 +198,7 @@ describe('CommitContextMenu', () => {
     const onResetLastCommit = vi.fn();
     const onEditMessage = vi.fn();
     const onDropCommit = vi.fn();
+    const onInteractiveRebase = vi.fn();
     const onSelectForCompare = vi.fn();
     const onPinCommit = vi.fn();
     const root = createRoot(container);
@@ -218,6 +219,7 @@ describe('CommitContextMenu', () => {
           onResetLastCommit={onResetLastCommit}
           onEditMessage={onEditMessage}
           onDropCommit={onDropCommit}
+          onInteractiveRebase={onInteractiveRebase}
           onSelectForCompare={onSelectForCompare}
           onPinCommit={onPinCommit}
         />,
@@ -248,7 +250,7 @@ describe('CommitContextMenu', () => {
     const fixupItem = container.querySelector(
       '[data-testid="action-menu-item-create-fixup"]',
     ) as HTMLElement;
-    expect(fixupItem.textContent).toBe('Create Fixup Commit');
+    expect(fixupItem.textContent).toBe('Fixup into Previous');
     await act(async () => fixupItem.click());
     expect(onFixup).toHaveBeenCalledWith('abcdef1234567890');
 
@@ -286,6 +288,13 @@ describe('CommitContextMenu', () => {
     expect(dropItem.textContent).toBe('Drop...');
     await act(async () => dropItem.click());
     expect(onDropCommit).toHaveBeenCalledWith('abcdef1234567890');
+
+    const interactiveRebaseItem = container.querySelector(
+      '[data-testid="action-menu-item-interactive-rebase-commit"]',
+    ) as HTMLElement;
+    expect(interactiveRebaseItem.textContent).toBe('Interactive Rebase from Here...');
+    await act(async () => interactiveRebaseItem.click());
+    expect(onInteractiveRebase).toHaveBeenCalledWith('abcdef1234567890');
 
     const selectCompareItem = container.querySelector(
       '[data-testid="action-menu-item-select-for-compare"]',

@@ -193,4 +193,45 @@ describe('RepositoryManager', () => {
     // Unknown ID returns undefined
     expect(manager.getRepository('unknown-id')).toBeUndefined();
   });
+
+  it('preserves manually opened submodule repositories across discovery refreshes', async () => {
+    (
+      vscode.workspace as unknown as {
+        workspaceFolders: vscode.WorkspaceFolder[] | undefined;
+      }
+    ).workspaceFolders = [{ uri: vscode.Uri.file('/projects/parent'), name: 'parent', index: 0 }];
+
+    const parent: RepositoryDescriptor = {
+      id: 'parent-id',
+      name: 'parent',
+      rootPath: '/projects/parent',
+      gitDir: '/projects/parent/.git',
+      isBare: false,
+      path: '/projects/parent',
+    };
+    const submodule: RepositoryDescriptor = {
+      id: 'submodule-id',
+      name: 'core',
+      rootPath: '/projects/parent/libs/core',
+      gitDir: '/projects/parent/libs/core/.git',
+      isBare: false,
+      path: '/projects/parent/libs/core',
+      parentRepositoryId: 'parent-id',
+    };
+
+    vi.spyOn(mockLocator, 'locateAll').mockResolvedValue([parent]);
+    const locateSpy = vi.spyOn(mockLocator, 'locate').mockResolvedValue(submodule);
+
+    const manager = new RepositoryManager({ locator: mockLocator });
+    await manager.discoverRepositories();
+
+    const opened = await manager.openRepository('/projects/parent/libs/core');
+    expect(locateSpy).toHaveBeenCalledWith('/projects/parent/libs/core');
+    expect(opened?.id).toBe('submodule-id');
+    expect(manager.getActiveRepository()?.id).toBe('submodule-id');
+
+    const refreshed = await manager.refresh();
+    expect(refreshed.map((repository) => repository.id)).toEqual(['parent-id', 'submodule-id']);
+    expect(manager.getActiveRepository()?.id).toBe('submodule-id');
+  });
 });

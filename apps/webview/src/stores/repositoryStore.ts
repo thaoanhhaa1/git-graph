@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { RepositoryItem } from '@git-graph/shared';
+import type { RepositoryItem, RepositorySyncStatus } from '@git-graph/shared';
 import { loadPersistedState, savePersistedState } from './persistence';
 
 export interface RepositoryStoreState {
@@ -8,6 +8,7 @@ export interface RepositoryStoreState {
   hasBootstrapped: boolean;
   isLoading: boolean;
   error: string | null;
+  syncStatus: RepositorySyncStatus | null;
 }
 
 export interface RepositoryStoreActions {
@@ -20,6 +21,7 @@ export interface RepositoryStoreActions {
   setBootstrapped: (hasBootstrapped: boolean) => void;
   setLoading: (isLoading: boolean) => void;
   setError: (error: string | null) => void;
+  setSyncStatus: (status: RepositorySyncStatus | null) => void;
   getActiveRepository: () => RepositoryItem | undefined;
   reset: () => void;
 }
@@ -34,6 +36,7 @@ export const useRepositoryStore = create<RepositoryStore>((set, get) => ({
   hasBootstrapped: false,
   isLoading: false,
   error: null,
+  syncStatus: null,
 
   setRepositories: (
     repositories: RepositoryItem[],
@@ -64,6 +67,7 @@ export const useRepositoryStore = create<RepositoryStore>((set, get) => ({
         hasBootstrapped: isBootstrap !== undefined ? isBootstrap : state.hasBootstrapped,
         isLoading: false,
         error: null,
+        syncStatus: null,
       };
     });
   },
@@ -84,6 +88,8 @@ export const useRepositoryStore = create<RepositoryStore>((set, get) => ({
 
   setError: (error: string | null) => set({ error, isLoading: false }),
 
+  setSyncStatus: (status) => set({ syncStatus: status }),
+
   getActiveRepository: () => {
     const { repositories, activeRepositoryId } = get();
     if (!activeRepositoryId) {
@@ -99,6 +105,7 @@ export const useRepositoryStore = create<RepositoryStore>((set, get) => ({
       hasBootstrapped: false,
       isLoading: false,
       error: null,
+      syncStatus: null,
     });
   },
 }));

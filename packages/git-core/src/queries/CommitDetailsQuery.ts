@@ -89,11 +89,13 @@ export class CommitDetailsQuery {
 
     let numstatArgs: string[];
     let nameStatusArgs: string[];
+    let rawDiffArgs: string[];
 
     if (compareParentSha) {
       // Comparison against specified parent (or merge commit parent 1)
       numstatArgs = ['diff', '-M', '-C', '--numstat', compareParentSha, cleanSha];
       nameStatusArgs = ['diff', '-M', '-C', '--name-status', compareParentSha, cleanSha];
+      rawDiffArgs = ['diff', '-M', '-C', '--raw', compareParentSha, cleanSha];
     } else if (isRootCommit) {
       // Root commit diff compared against empty tree
       numstatArgs = [
@@ -116,14 +118,16 @@ export class CommitDetailsQuery {
         '--name-status',
         cleanSha,
       ];
+      rawDiffArgs = ['diff-tree', '-r', '--root', '--no-commit-id', '-M', '-C', '--raw', cleanSha];
     } else {
       // Standard single-parent commit
       numstatArgs = ['diff-tree', '-r', '--no-commit-id', '-M', '-C', '--numstat', cleanSha];
       nameStatusArgs = ['diff-tree', '-r', '--no-commit-id', '-M', '-C', '--name-status', cleanSha];
+      rawDiffArgs = ['diff-tree', '-r', '--no-commit-id', '-M', '-C', '--raw', cleanSha];
     }
 
     try {
-      const [numstatResult, nameStatusResult] = await Promise.all([
+      const [numstatResult, nameStatusResult, rawDiffResult] = await Promise.all([
         this._client.exec(numstatArgs, {
           cwd: repoPath,
           timeoutMs: GitCommandTimeoutMs.fast,
@@ -134,13 +138,26 @@ export class CommitDetailsQuery {
           timeoutMs: GitCommandTimeoutMs.fast,
           maxBufferBytes: GitCommandMaxBufferBytes.small,
         }),
+        this._client.exec(rawDiffArgs, {
+          cwd: repoPath,
+          timeoutMs: GitCommandTimeoutMs.fast,
+          maxBufferBytes: GitCommandMaxBufferBytes.small,
+        }),
       ]);
 
       const numstatStdout = numstatResult.exitCode === 0 ? numstatResult.stdout : '';
       const nameStatusStdout = nameStatusResult.exitCode === 0 ? nameStatusResult.stdout : '';
+      const rawDiffStdout = rawDiffResult.exitCode === 0 ? rawDiffResult.stdout : '';
 
       const numstatEntries = DiffStatParser.parseNumstat(numstatStdout);
-      const nameStatusEntries = DiffStatParser.parseNameStatus(nameStatusStdout);
+      const submodulePaths = new Set(
+        DiffStatParser.parseRawDiff(rawDiffStdout)
+          .filter((entry) => entry.isSubmodule)
+          .map((entry) => entry.path),
+      );
+      const nameStatusEntries = DiffStatParser.parseNameStatus(nameStatusStdout).map((entry) =>
+        submodulePaths.has(entry.path) ? { ...entry, isSubmodule: true } : entry,
+      );
       const fileChanges = DiffStatParser.combine(numstatEntries, nameStatusEntries);
       const stats = DiffStatParser.computeStats(fileChanges);
 

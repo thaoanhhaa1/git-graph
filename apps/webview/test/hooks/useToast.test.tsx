@@ -64,6 +64,17 @@ describe('useToast', () => {
     expect(latest.toast).toBeNull();
   });
 
+  it('keeps an action available on the toast', () => {
+    const onClick = vi.fn();
+    act(() => {
+      latest.showToast('Done', 'success', 5000, { label: 'Undo', onClick });
+    });
+
+    expect(latest.toast?.action?.label).toBe('Undo');
+    latest.toast?.action?.onClick();
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
   it('does not schedule a timer when duration is zero', () => {
     act(() => {
       latest.showToast('Sticky', 'info', 0);

@@ -95,11 +95,42 @@ describe('GitGraphStatusBar', () => {
     await statusBar.update();
 
     const item = statusBar.statusBarItem;
-    expect(item.command).toBe('gitGraph.openGraph');
-    expect(item.tooltip).toBe('Git Graph CTS: main ↑2 ↓1\nClick to view Git Graph');
+    expect(item.command).toBe('gitGraph.pull');
+    expect(item.tooltip).toBe('Git Graph CTS: main ↑2 ↓1\nClick to pull 1 commit');
     expect(item.text).toBe('$(git-branch) Git Graph CTS ↑2 ↓1');
     expect((item as unknown as { visible: boolean }).visible).toBe(true);
 
+    statusBar.dispose();
+  });
+
+  it('uses the push command when the branch is ahead only', async () => {
+    mockClient.exec = vi.fn().mockImplementation(async (args: string[]) => {
+      if (args.includes('rev-parse')) {
+        return { exitCode: 0, stdout: 'abc1234567890\n', stderr: '' } as GitResult;
+      }
+      if (args.includes('for-each-ref')) {
+        const stdout =
+          'refs/heads/main\x1f' +
+          'abc1234567890\x1f' +
+          'commit\x1f' +
+          '\x1f' +
+          'origin/main\x1f' +
+          '*\x1f' +
+          '\x1e';
+        return { exitCode: 0, stdout, stderr: '' } as GitResult;
+      }
+      if (args.includes('rev-list')) {
+        return { exitCode: 0, stdout: '3\t0\n', stderr: '' } as GitResult;
+      }
+      return { exitCode: 0, stdout: '', stderr: '' } as GitResult;
+    });
+
+    const statusBar = createStatusBar();
+
+    await statusBar.update();
+
+    expect(statusBar.statusBarItem.command).toBe('gitGraph.push');
+    expect(statusBar.statusBarItem.tooltip).toBe('Git Graph CTS: main ↑3\nClick to push 3 commits');
     statusBar.dispose();
   });
 

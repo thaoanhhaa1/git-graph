@@ -1752,4 +1752,59 @@ describe('GitOperationService', () => {
       expect(invalid.actionableMessage).toContain('Invalid stash index');
     });
   });
+
+  describe('worktree operations', () => {
+    it('creates a linked worktree through the repository facade', async () => {
+      const addWorktree = vi.fn().mockResolvedValue([]);
+      (mockRepo as unknown as { addWorktree: typeof addWorktree }).addWorktree = addWorktree;
+
+      const result = await service.addGitWorktree({
+        operationId: 'worktree-add',
+        repositoryId: 'repo-1',
+        path: ' ../linked ',
+        branch: ' feature ',
+        newBranch: ' feature-2 ',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({
+        path: '../linked',
+        branch: 'feature',
+        newBranch: 'feature-2',
+      });
+      expect(addWorktree).toHaveBeenCalledWith({
+        path: '../linked',
+        branch: 'feature',
+        newBranch: 'feature-2',
+      });
+    });
+
+    it('removes a linked worktree with force enabled', async () => {
+      const removeWorktree = vi.fn().mockResolvedValue([]);
+      (mockRepo as unknown as { removeWorktree: typeof removeWorktree }).removeWorktree =
+        removeWorktree;
+
+      const result = await service.removeGitWorktree({
+        operationId: 'worktree-remove',
+        repositoryId: 'repo-1',
+        path: '/repos/linked',
+        force: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ path: '/repos/linked', force: true });
+      expect(removeWorktree).toHaveBeenCalledWith('/repos/linked', true);
+    });
+
+    it('rejects an empty worktree path before executing git', async () => {
+      const result = await service.addGitWorktree({
+        operationId: 'worktree-add-empty',
+        repositoryId: 'repo-1',
+        path: '   ',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.actionableMessage).toContain('Worktree path is required.');
+    });
+  });
 });

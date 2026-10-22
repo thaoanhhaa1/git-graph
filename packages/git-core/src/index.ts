@@ -12,7 +12,14 @@ export * from './queries/CommitQuery';
 export * from './queries/CommitDetailsQuery';
 export * from './queries/DiffQuery';
 export * from './queries/RefQuery';
+export * from './queries/RemoteQuery';
+export * from './queries/ReflogQuery';
+export * from './queries/RebasePlanQuery';
+export * from './queries/BlameQuery';
+export * from './queries/LineHistoryQuery';
 export * from './queries/WorktreeQuery';
+export * from './queries/GitWorktreeQuery';
+export * from './queries/SubmoduleQuery';
 
 // Backwards compatibility alias
 export type { GitResult as GitCommandResult } from './client/GitResult';

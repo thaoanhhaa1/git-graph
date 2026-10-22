@@ -12,6 +12,7 @@ export interface RepositoryManagerOptions {
 export class RepositoryManager implements vscode.Disposable {
   private readonly _locator: RepositoryLocator;
   private _repositories: RepositoryDescriptor[] = [];
+  private readonly _extraRepositories = new Map<string, RepositoryDescriptor>();
   private readonly _repositoryInstances = new Map<string, GitRepository>();
   private _activeRepositoryId?: string;
   private _isDiscovered = false;
@@ -57,7 +58,14 @@ export class RepositoryManager implements vscode.Disposable {
         const candidatePaths = folders.map((f) => f.uri.fsPath);
 
         const discovered = await this._locator.locateAll(candidatePaths);
-        this._repositories = discovered;
+        const discoveredKeys = new Set(
+          discovered.flatMap((repository) => [repository.id, repository.rootPath]),
+        );
+        const extras = Array.from(this._extraRepositories.values()).filter(
+          (repository) =>
+            !discoveredKeys.has(repository.id) && !discoveredKeys.has(repository.rootPath),
+        );
+        this._repositories = [...discovered, ...extras];
         this._isDiscovered = true;
 
         // Preserve active repository if still present, otherwise fallback to first
@@ -115,6 +123,36 @@ export class RepositoryManager implements vscode.Disposable {
       this._activeRepositoryId = id;
       this._onDidChangeActiveRepository.fire(target);
     }
+  }
+
+  /**
+   * Opens an additional repository path (for example a submodule worktree) and
+   * makes it active. Returns the existing descriptor when the path is already known.
+   */
+  public async openRepository(repositoryPath: string): Promise<RepositoryDescriptor | undefined> {
+    const descriptor = await this._locator.locate(repositoryPath);
+    if (!descriptor) {
+      return undefined;
+    }
+
+    const existing = this._repositories.find(
+      (repository) =>
+        repository.id === descriptor.id ||
+        repository.rootPath === descriptor.rootPath ||
+        repository.path === descriptor.rootPath,
+    );
+    if (existing) {
+      this.setActiveRepository(existing.id);
+      return existing;
+    }
+
+    this._repositories = [...this._repositories, descriptor];
+    this._extraRepositories.set(descriptor.id, descriptor);
+    this._isDiscovered = true;
+    this._activeRepositoryId = descriptor.id;
+    this._onDidChangeRepositories.fire(this._repositories);
+    this._onDidChangeActiveRepository.fire(descriptor);
+    return descriptor;
   }
 
   /**

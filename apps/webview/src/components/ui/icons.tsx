@@ -18,6 +18,10 @@ export type IconName =
   | 'settings'
   | 'fetch'
   | 'fetch-spinner'
+  | 'pull'
+  | 'push'
+  | 'remote'
+  | 'undo'
   | 'refresh'
   | 'view-columns'
   | 'alert-circle'
@@ -38,6 +42,7 @@ export type IconName =
   | 'stash'
   | 'commit'
   | 'archive'
+  | 'worktree'
   | 'git-graph';
 
 export const ICONS: Record<IconName, IconDefinition> = {
@@ -94,6 +99,50 @@ export const ICONS: Record<IconName, IconDefinition> = {
         <path d="M12.5 10A3.5 3.5 0 0 0 11 3.32 4.5 4.5 0 0 0 2.5 5.5 3.5 3.5 0 0 0 3.5 12" />
         <polyline points="8 9 8 14" />
         <polyline points="5.5 11.5 8 14 10.5 11.5" />
+      </>
+    ),
+  },
+  pull: {
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    children: (
+      <>
+        <line x1="8" y1="2" x2="8" y2="10" />
+        <polyline points="4.5 6.5 8 10 11.5 6.5" />
+        <path d="M2.5 12.5v1a1 1 0 001 1h9a1 1 0 001-1v-1" />
+      </>
+    ),
+  },
+  push: {
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    children: (
+      <>
+        <line x1="8" y1="13" x2="8" y2="5" />
+        <polyline points="4.5 8.5 8 5 11.5 8.5" />
+        <path d="M2.5 2.5v1a1 1 0 001 1h9a1 1 0 001-1v-1" />
+      </>
+    ),
+  },
+  remote: {
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    children: (
+      <>
+        <circle cx="8" cy="4" r="2.5" />
+        <circle cx="3" cy="12" r="2" />
+        <circle cx="13" cy="12" r="2" />
+        <path d="M8 6.5v2M8 8.5L3 10M8 8.5L13 10" />
+      </>
+    ),
+  },
+  undo: {
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    children: (
+      <>
+        <path d="M3 6.5h6.5a4 4 0 010 8H6" />
+        <polyline points="5.5 3.5 2.5 6.5 5.5 9.5" />
       </>
     ),
   },
@@ -290,6 +339,18 @@ export const ICONS: Record<IconName, IconDefinition> = {
         <rect x="2" y="3" width="12" height="3" rx="0.5" />
         <path d="M3 6v6.5a.5.5 0 00.5.5h9a.5.5 0 00.5-.5V6" />
         <line x1="6.5" y1="9" x2="9.5" y2="9" />
+      </>
+    ),
+  },
+  worktree: {
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    children: (
+      <>
+        <rect x="1.5" y="2" width="5" height="4" rx="0.5" />
+        <rect x="9.5" y="2" width="5" height="4" rx="0.5" />
+        <rect x="1.5" y="10" width="5" height="4" rx="0.5" />
+        <path d="M6.5 4h3M4 6v4M4 8h5.5a2.5 2.5 0 002.5-2.5V6" />
       </>
     ),
   },

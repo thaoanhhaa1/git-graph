@@ -1,5 +1,6 @@
-import React, { useMemo, useEffect, useState, useCallback } from 'react';
-import type { GitRef, OperationResetMode, SearchType } from '@git-graph/shared';
+import React, { useMemo, useEffect, useState, useCallback, useRef } from 'react';
+import { AppErrorCode } from '@git-graph/shared';
+import type { GitRef, OperationResetMode, RebasePlanEntry, SearchType } from '@git-graph/shared';
 import { Toolbar } from '../toolbar/Toolbar';
 import { ActiveFiltersBar } from '../search/ActiveFiltersBar';
 import { EmptyState } from '../common/EmptyState';
@@ -16,22 +17,39 @@ import { CreateTagDialog } from '../dialogs/CreateTagDialog';
 import { DeleteTagDialog } from '../dialogs/DeleteTagDialog';
 import { MergeDialog } from '../dialogs/MergeDialog';
 import { RebaseDialog } from '../dialogs/RebaseDialog';
+import { InteractiveRebaseDialog } from '../dialogs/InteractiveRebaseDialog';
 import { ResetDialog } from '../dialogs/ResetDialog';
 import { CherryPickDialog } from '../dialogs/CherryPickDialog';
 import { RevertDialog } from '../dialogs/RevertDialog';
 import { StashSaveDialog } from '../dialogs/StashSaveDialog';
 import { StashManagerDialog } from '../dialogs/StashManagerDialog';
+import { FetchDialog } from '../dialogs/FetchDialog';
+import type { FetchDialogOptions } from '../dialogs/FetchDialog';
+import { PullDialog } from '../dialogs/PullDialog';
+import type { PullDialogOptions } from '../dialogs/PullDialog';
+import { PushDialog } from '../dialogs/PushDialog';
+import type { PushDialogOptions } from '../dialogs/PushDialog';
+import { RemoteManagerDialog } from '../dialogs/RemoteManagerDialog';
+import { WorktreeManagerDialog } from '../dialogs/WorktreeManagerDialog';
+import { SubmoduleStatusDialog } from '../dialogs/SubmoduleStatusDialog';
+import { BranchDropActionDialog, type BranchDropAction } from '../dialogs/BranchDropActionDialog';
+import { SettingsDialog } from '../settings/SettingsDialog';
+import { useBranchTouchDrag } from '../../hooks/useBranchTouchDrag';
 import { useRepositoryStore } from '../../stores/repositoryStore';
 import { useGraphStore } from '../../stores/graphStore';
 import { useSelectionStore } from '../../stores/selectionStore';
 import { useDetailsStore, buildDetailsCacheKey } from '../../stores/detailsStore';
 import { useDiffStore } from '../../stores/diffStore';
 import { useConfigStore } from '../../stores/configStore';
+import {
+  useInteractiveRebaseStore,
+  type InteractiveRebaseInitialAction,
+} from '../../stores/interactiveRebaseStore';
 import { useCommitRows, type NormalizedCommit } from '../../hooks/useCommitRows';
 import { formatGitGraphDate } from '../common/dateUtils';
 import { useToast } from '../../hooks/useToast';
 import { Toast } from '../../components/ui/Toast';
-import type { OperationMergeFastForwardMode, TagType } from '@git-graph/shared';
+import type { OperationMergeFastForwardMode, OperationUndoInfo, TagType } from '@git-graph/shared';
 import {
   requestRepositoriesList,
   requestGraphRefresh,
@@ -47,20 +65,42 @@ import {
   requestMerge,
   requestRebase,
   requestRebaseAction,
+  requestInteractiveRebasePlan,
+  requestInteractiveRebaseStart,
+  requestInteractiveRebaseAction,
   requestCherryPick,
   requestCherryPickAction,
   requestRevert,
   requestReset,
+  requestPull,
   requestFetch,
+  requestRemoteList,
+  requestAddRemote,
+  requestRemoveRemote,
+  requestRenameRemote,
+  requestSetRemoteUrl,
+  requestUndo,
+  requestSyncStatus,
   requestSaveStash,
   requestStashList,
   requestPopStash,
   requestApplyStash,
   requestDropStash,
+  requestAddGitWorktree,
+  requestRemoveGitWorktree,
+  requestOpenGitWorktreeInNewWindow,
+  requestOpenSubmodule,
 } from '../../messaging/messageRouter';
 import { useWorktreeStore } from '../../stores/worktreeStore';
+import { useOperationStore } from '../../stores/operationStore';
+import { useRemoteStore } from '../../stores/remoteStore';
+import { useGitWorktreeStore } from '../../stores/gitWorktreeStore';
+import { useSubmoduleStore } from '../../stores/submoduleStore';
+import { useUiStore } from '../../stores/uiStore';
 
 export type { NormalizedCommit };
+
+const BRANCH_DRAG_MIME = 'application/x-git-graph-branch';
 
 function matchesRef(commit: NormalizedCommit, query: string): boolean {
   for (const ref of commit.refsLower) {
@@ -137,6 +177,28 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
 
   const compactMode = useConfigStore((s) => s.config.compactMode);
   const rowHeight = compactMode ? COMPACT_ROW_HEIGHT : DEFAULT_ROW_HEIGHT;
+
+  const syncStatus = useRepositoryStore((s) => s.syncStatus);
+  const remotes = useRemoteStore((s) => s.remotes);
+  const remotesLoading = useRemoteStore((s) => s.isLoading);
+  const remotesError = useRemoteStore((s) => s.error);
+  const requestedDialog = useUiStore((s) => s.requestedDialog);
+  const operationProgress = useOperationStore((s) => s.progress);
+  const operationMessage = useOperationStore((s) => s.message);
+  const operationActiveId = useOperationStore((s) => s.activeRequestId);
+  const lastOperationResult = useOperationStore((s) => s.lastResult);
+
+  const defaultRemote = useMemo(() => {
+    const names = remotes.map((remote) => remote.name);
+    const upstreamRemote = syncStatus?.upstream?.split('/')[0];
+    if (upstreamRemote && names.includes(upstreamRemote)) {
+      return upstreamRemote;
+    }
+    if (names.includes('origin')) {
+      return 'origin';
+    }
+    return names[0];
+  }, [remotes, syncStatus?.upstream]);
 
   const [focusChangesOnOpen, setFocusChangesOnOpen] = useState(false);
   const { toast, showToast } = useToast();
@@ -238,8 +300,39 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
   });
   const [stashSaveDialogOpen, setStashSaveDialogOpen] = useState(false);
   const [stashManagerOpen, setStashManagerOpen] = useState(false);
+  const [fetchDialogOpen, setFetchDialogOpen] = useState(false);
+  const [pullDialogOpen, setPullDialogOpen] = useState(false);
+  const [pushDialogOpen, setPushDialogOpen] = useState(false);
+  const [remoteManagerOpen, setRemoteManagerOpen] = useState(false);
+  const [worktreeDialogOpen, setWorktreeDialogOpen] = useState(false);
+  const [submoduleDialogOpen, setSubmoduleDialogOpen] = useState(false);
+  const [worktreeDialogError, setWorktreeDialogError] = useState<string | null>(null);
+  const [submoduleDialogError, setSubmoduleDialogError] = useState<string | null>(null);
+  const [pullDefaults, setPullDefaults] = useState<{ remote?: string; branch?: string }>({});
+  const [pushTargetBranch, setPushTargetBranch] = useState<string | undefined>(undefined);
+  const [syncDialogError, setSyncDialogError] = useState<string | null>(null);
+  const [pendingUndoRequestId, setPendingUndoRequestId] = useState<string | null>(null);
+  const [activeDialogOperation, setActiveDialogOperation] = useState<{
+    id: string;
+    kind: 'fetch' | 'pull' | 'push' | 'remote' | 'worktree';
+  } | null>(null);
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const [dropTargetSha, setDropTargetSha] = useState<string | null>(null);
+  const [branchDropDialog, setBranchDropDialog] = useState<{
+    isOpen: boolean;
+    source: RefBadgeItem | null;
+    targetSha: string | null;
+  }>({ isOpen: false, source: null, targetSha: null });
+  const dragSourceRef = useRef<RefBadgeItem | null>(null);
   const stashes = useWorktreeStore((s) => s.stashes);
   const isLoadingStashes = useWorktreeStore((s) => s.isLoadingStashes);
+  const gitWorktrees = useGitWorktreeStore((s) => s.worktrees);
+  const currentWorktreePath = useGitWorktreeStore((s) => s.currentPath);
+  const isLoadingWorktrees = useGitWorktreeStore((s) => s.isLoading);
+  const worktreesError = useGitWorktreeStore((s) => s.error);
+  const submodules = useSubmoduleStore((s) => s.submodules);
+  const isLoadingSubmodules = useSubmoduleStore((s) => s.isLoading);
+  const submodulesError = useSubmoduleStore((s) => s.error);
 
   const errorMessage = repoError || graphError;
   const isMergeConflictError = Boolean(
@@ -249,7 +342,9 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
       errorMessage.includes('Automatic merge failed')),
   );
   const isRebaseConflictError = Boolean(
-    errorMessage && errorMessage.includes('Rebase stopped with conflicts'),
+    errorMessage &&
+    errorMessage.toLowerCase().includes('rebase') &&
+    errorMessage.includes('stopped with conflicts'),
   );
   const isCherryPickConflictError = Boolean(
     errorMessage && errorMessage.includes('Cherry-pick stopped with conflicts'),
@@ -274,12 +369,136 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
     useRepositoryStore.getState().setError(null);
   }, []);
 
-  const handleFetch = useCallback(() => {
-    useGraphStore.getState().setError(null);
-    useRepositoryStore.getState().setError(null);
-    requestFetch();
-    showToast('Fetching commits from remote...');
-  }, [showToast]);
+  const refreshRemotes = useCallback(() => {
+    if (!activeRepo) {
+      return;
+    }
+    requestRemoteList(activeRepo.id);
+  }, [activeRepo]);
+
+  const openFetchDialog = useCallback(() => {
+    if (!activeRepo) {
+      return;
+    }
+    setSyncDialogError(null);
+    setActiveDialogOperation(null);
+    refreshRemotes();
+    setFetchDialogOpen(true);
+  }, [activeRepo, refreshRemotes]);
+
+  const openPullDialog = useCallback(() => {
+    if (!activeRepo) {
+      return;
+    }
+    setSyncDialogError(null);
+    setActiveDialogOperation(null);
+    setPullDefaults({});
+    refreshRemotes();
+    setPullDialogOpen(true);
+  }, [activeRepo, refreshRemotes]);
+
+  const openPushDialog = useCallback(() => {
+    if (!activeRepo) {
+      return;
+    }
+    setSyncDialogError(null);
+    setActiveDialogOperation(null);
+    setPushTargetBranch(undefined);
+    refreshRemotes();
+    requestSyncStatus(activeRepo.id);
+    setPushDialogOpen(true);
+  }, [activeRepo, refreshRemotes]);
+
+  const openRemoteManager = useCallback(() => {
+    if (!activeRepo) {
+      return;
+    }
+    setSyncDialogError(null);
+    setActiveDialogOperation(null);
+    setRemoteManagerOpen(true);
+  }, [activeRepo]);
+
+  const refreshWorktrees = useCallback(() => {
+    if (!activeRepo) {
+      return;
+    }
+    setWorktreeDialogError(null);
+    useGitWorktreeStore.getState().requestWorktrees(activeRepo.id);
+  }, [activeRepo]);
+
+  const refreshSubmodules = useCallback(() => {
+    if (!activeRepo) {
+      return;
+    }
+    setSubmoduleDialogError(null);
+    useSubmoduleStore.getState().requestSubmodules(activeRepo.id);
+  }, [activeRepo]);
+
+  const openWorktreeManager = useCallback(() => {
+    if (!activeRepo) {
+      return;
+    }
+    setWorktreeDialogError(null);
+    setActiveDialogOperation(null);
+    setWorktreeDialogOpen(true);
+    refreshWorktrees();
+  }, [activeRepo, refreshWorktrees]);
+
+  const openSubmoduleStatus = useCallback(() => {
+    if (!activeRepo) {
+      return;
+    }
+    setSubmoduleDialogError(null);
+    setSubmoduleDialogOpen(true);
+    refreshSubmodules();
+  }, [activeRepo, refreshSubmodules]);
+
+  const handleAddWorktree = useCallback(
+    (path: string, branch?: string, newBranch?: string) => {
+      if (!activeRepo) {
+        return;
+      }
+      setWorktreeDialogError(null);
+      const requestId = requestAddGitWorktree({
+        repositoryId: activeRepo.id,
+        path,
+        ...(branch ? { branch } : {}),
+        ...(newBranch ? { newBranch } : {}),
+      });
+      if (requestId) {
+        setActiveDialogOperation({ id: requestId, kind: 'worktree' });
+      }
+    },
+    [activeRepo],
+  );
+
+  const handleRemoveWorktree = useCallback(
+    (path: string, force: boolean) => {
+      if (!activeRepo) {
+        return;
+      }
+      setWorktreeDialogError(null);
+      const requestId = requestRemoveGitWorktree({
+        repositoryId: activeRepo.id,
+        path,
+        force,
+      });
+      if (requestId) {
+        setActiveDialogOperation({ id: requestId, kind: 'worktree' });
+      }
+    },
+    [activeRepo],
+  );
+
+  const handleOpenWorktree = useCallback(
+    (path: string) => {
+      if (!activeRepo) {
+        return;
+      }
+      requestOpenGitWorktreeInNewWindow({ repositoryId: activeRepo.id, path });
+    },
+    [activeRepo],
+  );
 
   const handleAbortMerge = useCallback(() => {
     if (!activeRepo) {
@@ -811,6 +1030,150 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
     [rawCommits],
   );
 
+  const openBranchDropDialog = useCallback(
+    (source: RefBadgeItem, targetSha: string) => {
+      const commit = rawCommits.find(
+        (candidate) =>
+          candidate.sha === targetSha ||
+          candidate.shortSha === targetSha ||
+          candidate.sha.startsWith(targetSha),
+      );
+      if (!commit) return;
+      if (
+        source.targetSha &&
+        (commit.sha === source.targetSha || commit.sha.startsWith(source.targetSha))
+      ) {
+        return;
+      }
+      setBranchDropDialog({ isOpen: true, source, targetSha: commit.sha });
+    },
+    [rawCommits],
+  );
+
+  const handleRefDragStart = useCallback(
+    (refItem: RefBadgeItem, event: React.DragEvent<HTMLSpanElement>) => {
+      if (!hasLiveCommits || (refItem.type !== 'localBranch' && refItem.type !== 'branch')) {
+        event.preventDefault();
+        return;
+      }
+      dragSourceRef.current = refItem;
+      setDropTargetSha(null);
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData(
+          BRANCH_DRAG_MIME,
+          JSON.stringify({
+            name: refItem.name,
+            targetSha: refItem.targetSha,
+            type: refItem.type,
+          }),
+        );
+        event.dataTransfer.setData('text/plain', refItem.name);
+      }
+    },
+    [hasLiveCommits],
+  );
+
+  const handleRefDragEnd = useCallback(() => {
+    dragSourceRef.current = null;
+    setDropTargetSha(null);
+  }, []);
+
+  const handleCommitDragOver = useCallback(
+    (sha: string, event: React.DragEvent<HTMLTableRowElement>) => {
+      const source = dragSourceRef.current;
+      const hasBranchPayload =
+        source !== null ||
+        (event.dataTransfer?.types
+          ? Array.from(event.dataTransfer.types).includes(BRANCH_DRAG_MIME)
+          : false);
+      if (!hasBranchPayload) return;
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move';
+      }
+      setDropTargetSha((prev) => (prev === sha ? prev : sha));
+    },
+    [],
+  );
+
+  const handleCommitDragLeave = useCallback(
+    (sha: string, event: React.DragEvent<HTMLTableRowElement>) => {
+      if (!dragSourceRef.current) return;
+      const relatedTarget = event.relatedTarget as Node | null;
+      if (relatedTarget && event.currentTarget.contains(relatedTarget)) return;
+      setDropTargetSha((prev) => (prev === sha ? null : prev));
+    },
+    [],
+  );
+
+  const handleCommitDrop = useCallback(
+    (sha: string, event: React.DragEvent<HTMLTableRowElement>) => {
+      let source = dragSourceRef.current;
+      if (!source) {
+        const raw = event.dataTransfer?.getData?.(BRANCH_DRAG_MIME);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw) as {
+              name?: string;
+              targetSha?: string;
+              type?: RefBadgeItem['type'];
+            };
+            if (parsed.name && parsed.type) {
+              source = { name: parsed.name, type: parsed.type, targetSha: parsed.targetSha };
+            }
+          } catch {
+            source = null;
+          }
+        }
+      }
+      if (!source) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dragSourceRef.current = null;
+      setDropTargetSha(null);
+      openBranchDropDialog(source, sha);
+    },
+    [openBranchDropDialog],
+  );
+
+  const { dragState: touchDragState, handleTouchStart: handleBranchTouchStart } =
+    useBranchTouchDrag({
+      onStart: (source) => {
+        dragSourceRef.current = source;
+        setDropTargetSha(null);
+      },
+      onTargetChange: (sha) => setDropTargetSha(sha),
+      onDrop: (source, sha) => openBranchDropDialog(source, sha),
+      onCancel: () => {
+        dragSourceRef.current = null;
+        setDropTargetSha(null);
+      },
+    });
+
+  const handleRefTouchStart = useCallback(
+    (refItem: RefBadgeItem, event: React.TouchEvent<HTMLSpanElement>) => {
+      if (refItem.type !== 'localBranch' && refItem.type !== 'branch') return;
+      handleBranchTouchStart(refItem, event);
+    },
+    [handleBranchTouchStart],
+  );
+
+  const handleBranchDropConfirm = useCallback(
+    (action: BranchDropAction, source: RefBadgeItem) => {
+      const targetSha = branchDropDialog.targetSha;
+      if (!targetSha) return;
+      if (action === 'merge') {
+        handleMerge(source.name);
+      } else if (action === 'rebase') {
+        handleRebase(targetSha);
+      } else {
+        handleReset(targetSha, 'mixed');
+      }
+    },
+    [branchDropDialog.targetSha, handleMerge, handleRebase, handleReset],
+  );
+
   const handleOpenStashSaveDialog = useCallback(() => {
     setStashSaveDialogOpen(true);
   }, []);
@@ -942,25 +1305,191 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
     [activeRepo, showToast],
   );
 
+  const resolveRemoteBranch = useCallback(
+    (branchName: string): { remote?: string; branch: string } => {
+      const cleanName = branchName.replace(/^refs\/heads\//, '').replace(/^refs\/remotes\//, '');
+      const remoteName = remotes
+        .map((remote) => remote.name)
+        .find((name) => cleanName.startsWith(`${name}/`));
+      if (remoteName) {
+        return { remote: remoteName, branch: cleanName.slice(remoteName.length + 1) };
+      }
+      return { branch: cleanName };
+    },
+    [remotes],
+  );
+
   const handlePushBranch = useCallback(
     (branchName: string) => {
-      if (!activeRepo) return;
-      const cleanName = branchName.replace(/^refs\/heads\//, '').replace(/^refs\/remotes\//, '');
-      requestPushBranch({
-        repositoryId: activeRepo.id,
-        branchName: cleanName,
-        setUpstream: true,
-      });
-      showToast(`Pushing branch '${cleanName}' to remote...`);
+      if (!activeRepo) {
+        return;
+      }
+      const { branch } = resolveRemoteBranch(branchName);
+      setSyncDialogError(null);
+      setActiveDialogOperation(null);
+      setPushTargetBranch(branch);
+      refreshRemotes();
+      requestSyncStatus(activeRepo.id);
+      setPushDialogOpen(true);
     },
-    [activeRepo, showToast],
+    [activeRepo, refreshRemotes, resolveRemoteBranch],
   );
 
   const handlePullBranch = useCallback(
     (branchName: string) => {
-      showToast(`Pull branch '${branchName}'`);
+      if (!activeRepo) {
+        return;
+      }
+      const { remote, branch } = resolveRemoteBranch(branchName);
+      const resolvedRemote = remote ?? defaultRemote;
+      setSyncDialogError(null);
+      setActiveDialogOperation(null);
+      setPullDefaults({
+        ...(resolvedRemote ? { remote: resolvedRemote } : {}),
+        branch,
+      });
+      refreshRemotes();
+      setPullDialogOpen(true);
     },
-    [showToast],
+    [activeRepo, defaultRemote, refreshRemotes, resolveRemoteBranch],
+  );
+
+  const handleExecuteFetch = useCallback(
+    (options: FetchDialogOptions) => {
+      if (!activeRepo) {
+        return;
+      }
+      setSyncDialogError(null);
+      const id = requestFetch({
+        repositoryId: activeRepo.id,
+        ...(options.remote ? { remote: options.remote } : {}),
+        prune: options.prune,
+        all: options.all,
+      });
+      if (id) {
+        setActiveDialogOperation({ id, kind: 'fetch' });
+      }
+    },
+    [activeRepo],
+  );
+
+  const handleExecutePull = useCallback(
+    (options: PullDialogOptions) => {
+      if (!activeRepo) {
+        return;
+      }
+      setSyncDialogError(null);
+      const id = requestPull({
+        repositoryId: activeRepo.id,
+        ...(options.remote ? { remote: options.remote } : {}),
+        branch: options.branch,
+        strategy: options.strategy,
+        autostash: options.autostash,
+      });
+      if (id) {
+        setActiveDialogOperation({ id, kind: 'pull' });
+      }
+    },
+    [activeRepo],
+  );
+
+  const handleExecutePush = useCallback(
+    (options: PushDialogOptions) => {
+      if (!activeRepo) {
+        return;
+      }
+      setSyncDialogError(null);
+      const id = requestPushBranch({
+        repositoryId: activeRepo.id,
+        branchName: options.branchName,
+        remote: options.remote,
+        setUpstream: options.setUpstream,
+        forceWithLease: options.forceWithLease,
+        tags: options.tags,
+      });
+      if (id) {
+        setActiveDialogOperation({ id, kind: 'push' });
+      }
+    },
+    [activeRepo],
+  );
+
+  const handleAddRemote = useCallback(
+    (name: string, url: string) => {
+      if (!activeRepo) {
+        return;
+      }
+      setSyncDialogError(null);
+      const id = requestAddRemote({ repositoryId: activeRepo.id, name, url });
+      if (id) {
+        setActiveDialogOperation({ id, kind: 'remote' });
+      }
+    },
+    [activeRepo],
+  );
+
+  const handleRemoveRemote = useCallback(
+    (name: string) => {
+      if (!activeRepo) {
+        return;
+      }
+      setSyncDialogError(null);
+      const id = requestRemoveRemote({ repositoryId: activeRepo.id, name });
+      if (id) {
+        setActiveDialogOperation({ id, kind: 'remote' });
+      }
+    },
+    [activeRepo],
+  );
+
+  const handleRenameRemote = useCallback(
+    (oldName: string, newName: string) => {
+      if (!activeRepo) {
+        return;
+      }
+      setSyncDialogError(null);
+      const id = requestRenameRemote({ repositoryId: activeRepo.id, oldName, newName });
+      if (id) {
+        setActiveDialogOperation({ id, kind: 'remote' });
+      }
+    },
+    [activeRepo],
+  );
+
+  const handleSetRemoteUrl = useCallback(
+    (name: string, url: string, push?: boolean) => {
+      if (!activeRepo) {
+        return;
+      }
+      setSyncDialogError(null);
+      const id = requestSetRemoteUrl({
+        repositoryId: activeRepo.id,
+        name,
+        url,
+        ...(push !== undefined ? { push } : {}),
+      });
+      if (id) {
+        setActiveDialogOperation({ id, kind: 'remote' });
+      }
+    },
+    [activeRepo],
+  );
+
+  const handleUndo = useCallback(
+    (undo: OperationUndoInfo) => {
+      if (!activeRepo) {
+        return;
+      }
+      const id = requestUndo({
+        repositoryId: activeRepo.id,
+        ...(undo.reflogIndex !== undefined ? { reflogIndex: undo.reflogIndex } : {}),
+        ...(undo.expectedSha ? { expectedSha: undo.expectedSha } : {}),
+      });
+      if (id) {
+        setPendingUndoRequestId(id);
+      }
+    },
+    [activeRepo],
   );
 
   const handleCreateArchive = useCallback(
@@ -984,33 +1513,134 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
     [showToast],
   );
 
+  const openInteractiveRebase = useCallback(
+    (onto: string, initialAction?: InteractiveRebaseInitialAction) => {
+      if (!activeRepo || !onto) {
+        return;
+      }
+      const currentBranch = activeRepo.currentBranch;
+      const branchRef = currentBranch
+        ? rawCommits
+            .flatMap((commit) => commit.refs)
+            .find(
+              (ref) =>
+                ref.kind === 'localBranch' &&
+                (ref.name === currentBranch || ref.fullName === `refs/heads/${currentBranch}`),
+            )
+        : undefined;
+
+      useInteractiveRebaseStore.getState().open({
+        repositoryId: activeRepo.id,
+        onto,
+        isPublished: Boolean(branchRef?.upstream),
+        ...(branchRef?.upstream ? { upstream: branchRef.upstream } : {}),
+        ...(initialAction ? { initialAction } : {}),
+      });
+      requestInteractiveRebasePlan(onto, activeRepo.id);
+    },
+    [activeRepo, rawCommits],
+  );
+
+  const handleInteractiveRebase = useCallback(
+    (sha: string) => {
+      const parent = rawCommits.find((commit) => commit.sha === sha)?.parents[0];
+      if (!parent) {
+        showToast('Cannot start an interactive rebase from a root commit.', 'error');
+        return;
+      }
+      openInteractiveRebase(parent);
+    },
+    [rawCommits, openInteractiveRebase, showToast],
+  );
+
   const handleFixup = useCallback(
     (sha: string) => {
-      showToast(`Create fixup commit for ${sha.slice(0, 7)}`);
+      const parent = rawCommits.find((commit) => commit.sha === sha)?.parents[0];
+      if (!parent) {
+        showToast('Cannot fixup a root commit.', 'error');
+        return;
+      }
+      openInteractiveRebase(`${parent}^`, { sha, action: 'fixup' });
     },
-    [showToast],
+    [rawCommits, openInteractiveRebase, showToast],
   );
 
   const handleSquashCommit = useCallback(
     (sha: string) => {
-      showToast(`Create squash commit for ${sha.slice(0, 7)}`);
+      const parent = rawCommits.find((commit) => commit.sha === sha)?.parents[0];
+      if (!parent) {
+        showToast('Cannot squash a root commit.', 'error');
+        return;
+      }
+      openInteractiveRebase(`${parent}^`, { sha, action: 'squash' });
     },
-    [showToast],
+    [rawCommits, openInteractiveRebase, showToast],
   );
 
   const handleEditMessage = useCallback(
     (sha: string) => {
-      showToast(`Edit message for ${sha.slice(0, 7)}`);
+      const target = rawCommits.find((commit) => commit.sha === sha);
+      const parent = target?.parents[0];
+      if (!parent) {
+        showToast('Cannot edit the message of a root commit.', 'error');
+        return;
+      }
+      openInteractiveRebase(parent, {
+        sha,
+        action: 'reword',
+        ...(target?.subject ? { message: target.subject } : {}),
+      });
     },
-    [showToast],
+    [rawCommits, openInteractiveRebase, showToast],
   );
 
   const handleDropCommit = useCallback(
     (sha: string) => {
-      showToast(`Drop commit ${sha.slice(0, 7)}`);
+      const parent = rawCommits.find((commit) => commit.sha === sha)?.parents[0];
+      if (!parent) {
+        showToast('Cannot drop a root commit.', 'error');
+        return;
+      }
+      openInteractiveRebase(parent, { sha, action: 'drop' });
     },
-    [showToast],
+    [rawCommits, openInteractiveRebase, showToast],
   );
+
+  const handleStartInteractiveRebase = useCallback(
+    (entries: RebasePlanEntry[], confirmedPublishedBranch: boolean) => {
+      if (!activeRepo) {
+        return;
+      }
+      const { onto } = useInteractiveRebaseStore.getState();
+      if (!onto) {
+        return;
+      }
+      requestInteractiveRebaseStart({
+        repositoryId: activeRepo.id,
+        onto,
+        plan: entries,
+        ...(confirmedPublishedBranch ? { confirmedPublishedBranch: true } : {}),
+      });
+      showToast('Starting interactive rebase...', 'loading', 3000);
+    },
+    [activeRepo, showToast],
+  );
+
+  const handleContinueInteractiveRebase = useCallback(() => {
+    requestInteractiveRebaseAction('continue');
+  }, []);
+
+  const handleAbortInteractiveRebase = useCallback(() => {
+    requestInteractiveRebaseAction('abort');
+  }, []);
+
+  const handleSkipInteractiveRebase = useCallback(() => {
+    requestInteractiveRebaseAction('skip');
+  }, []);
+
+  const handleCloseInteractiveRebase = useCallback(() => {
+    useInteractiveRebaseStore.getState().close();
+  }, []);
 
   const handlePinCommit = useCallback(
     (sha: string) => {
@@ -1140,6 +1770,10 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
     () => setResetDialog((prev) => ({ ...prev, isOpen: false })),
     [],
   );
+  const closeBranchDropDialog = useCallback(
+    () => setBranchDropDialog((prev) => ({ ...prev, isOpen: false })),
+    [],
+  );
   const closeCherryPickDialog = useCallback(
     () => setCherryPickDialog((prev) => ({ ...prev, isOpen: false })),
     [],
@@ -1148,6 +1782,159 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
     () => setRevertDialog((prev) => ({ ...prev, isOpen: false })),
     [],
   );
+  const closeFetchDialog = useCallback(() => {
+    setFetchDialogOpen(false);
+    setSyncDialogError(null);
+  }, []);
+  const closePullDialog = useCallback(() => {
+    setPullDialogOpen(false);
+    setSyncDialogError(null);
+  }, []);
+  const closePushDialog = useCallback(() => {
+    setPushDialogOpen(false);
+    setSyncDialogError(null);
+  }, []);
+  const closeRemoteManager = useCallback(() => {
+    setRemoteManagerOpen(false);
+    setSyncDialogError(null);
+  }, []);
+  const closeSettingsDialog = useCallback(() => setSettingsDialogOpen(false), []);
+  const openSettingsDialog = useCallback(() => setSettingsDialogOpen(true), []);
+
+  useEffect(() => {
+    if (!requestedDialog || !activeRepo) {
+      return;
+    }
+    switch (requestedDialog) {
+      case 'fetch':
+        openFetchDialog();
+        break;
+      case 'pull':
+        openPullDialog();
+        break;
+      case 'push':
+        openPushDialog();
+        break;
+      case 'remotes':
+        openRemoteManager();
+        break;
+      case 'worktrees':
+        openWorktreeManager();
+        break;
+    }
+    useUiStore.getState().clearRequestedDialog();
+  }, [
+    requestedDialog,
+    activeRepo,
+    openFetchDialog,
+    openPullDialog,
+    openPushDialog,
+    openRemoteManager,
+    openWorktreeManager,
+  ]);
+
+  useEffect(() => {
+    if (activeRepo) {
+      requestSyncStatus(activeRepo.id);
+    }
+  }, [activeRepo]);
+
+  useEffect(() => {
+    const result = lastOperationResult;
+    if (!result) {
+      return;
+    }
+    const clearResult = () => useOperationStore.getState().clearLastResult();
+    const message = result.error?.message ?? 'Operation failed.';
+
+    if (pendingUndoRequestId === result.requestId) {
+      setPendingUndoRequestId(null);
+      if (result.success) {
+        showToast('Last operation undone.', 'success', 4000);
+      } else if (result.error?.code === AppErrorCode.OPERATION_CANCELLED) {
+        showToast(message, 'info', 3000);
+      } else {
+        showToast(message, 'error', 6000);
+      }
+      clearResult();
+      return;
+    }
+
+    const activeMatches = activeDialogOperation?.id === result.requestId;
+    const kind = activeMatches ? activeDialogOperation.kind : null;
+
+    if (activeMatches) {
+      setActiveDialogOperation(null);
+      if (!result.success) {
+        if (kind === 'worktree') {
+          setWorktreeDialogError(message);
+        } else {
+          setSyncDialogError(message);
+        }
+        clearResult();
+        return;
+      }
+      setSyncDialogError(null);
+      switch (kind) {
+        case 'fetch':
+          setFetchDialogOpen(false);
+          showToast('Fetch complete.', 'success', 4000);
+          break;
+        case 'pull':
+          setPullDialogOpen(false);
+          showToast('Pull complete.', 'success', 4000);
+          break;
+        case 'push':
+          setPushDialogOpen(false);
+          showToast(result.undo?.reason ?? 'Push complete.', 'info', 5000);
+          break;
+        case 'remote':
+          refreshRemotes();
+          showToast('Remote updated.', 'success', 3000);
+          break;
+        case 'worktree':
+          refreshWorktrees();
+          showToast('Worktree updated.', 'success', 3000);
+          break;
+      }
+    }
+
+    if (!result.success) {
+      if (remoteManagerOpen) {
+        setSyncDialogError(message);
+      }
+      if (!activeMatches) {
+        showToast(message, 'error', 6000);
+      }
+      clearResult();
+      return;
+    }
+
+    const undo = result.undo;
+    if (undo?.available) {
+      const undoInfo = undo;
+      showToast(`${undo.label ?? 'Last operation'} completed.`, 'success', 10000, {
+        label: 'Undo',
+        onClick: () => handleUndo(undoInfo),
+      });
+    } else if (undo?.reason && !activeMatches) {
+      showToast(undo.reason, 'info', 5000);
+    } else if (remoteManagerOpen && !activeMatches) {
+      refreshRemotes();
+      showToast('Remote updated.', 'success', 3000);
+    }
+
+    clearResult();
+  }, [
+    activeDialogOperation,
+    handleUndo,
+    lastOperationResult,
+    pendingUndoRequestId,
+    refreshRemotes,
+    refreshWorktrees,
+    remoteManagerOpen,
+    showToast,
+  ]);
 
   // Live commits from graph store, normalized incrementally with lazily formatted dates
   const displayCommits: NormalizedCommit[] = useCommitRows(rawCommits, activeRepo?.currentBranch);
@@ -1170,14 +1957,38 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
     useGraphStore.getState().setSearchMatches(matchingShas);
   }, [matchingShas]);
 
+  const worktreeBranches = useMemo(() => {
+    const branches = new Map<string, string>();
+    for (const worktree of gitWorktrees) {
+      if (worktree.branch && !worktree.isCurrent) {
+        branches.set(worktree.branch, worktree.path);
+      }
+    }
+    return branches;
+  }, [gitWorktrees]);
+
+  const dialogProgress =
+    activeDialogOperation && operationActiveId === activeDialogOperation.id ? operationProgress : 0;
+  const dialogProgressMessage =
+    activeDialogOperation && operationActiveId === activeDialogOperation.id
+      ? (operationMessage ?? undefined)
+      : undefined;
+
   return (
     <div className="git-graph-app" data-testid="git-graph-app">
       {/* Top Toolbar */}
       <Toolbar
         onRefresh={handleRetry}
-        onFetch={handleFetch}
+        onFetch={openFetchDialog}
+        onPull={openPullDialog}
+        onPush={openPushDialog}
+        onManageRemotes={openRemoteManager}
+        onManageWorktrees={openWorktreeManager}
+        onManageSubmodules={openSubmoduleStatus}
+        submoduleCount={submodules.length}
         onStash={handleOpenStashSaveDialog}
         onManageStashes={handleOpenStashManager}
+        onOpenSettings={openSettingsDialog}
         searchDebounceMs={searchDebounceMs}
       />
 
@@ -1224,7 +2035,12 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
         ) : (
           <>
             {errorMessage && hasLiveCommits && (
-              <div className="graph-alert-banner" role="alert" data-testid="graph-alert-banner">
+              <div
+                className="graph-alert-banner"
+                role="alert"
+                aria-live="assertive"
+                data-testid="graph-alert-banner"
+              >
                 <div className="alert-content">
                   <span className="alert-icon">⚠️</span>
                   <span className="alert-text">{errorMessage}</span>
@@ -1349,6 +2165,15 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
                 isLoadingMore={isLoadingMore}
                 onLoadMore={handleLoadMore}
                 onCheckoutRef={hasLiveCommits ? handleCheckoutRef : undefined}
+                draggableRefs={hasLiveCommits}
+                onRefDragStart={handleRefDragStart}
+                onRefDragEnd={handleRefDragEnd}
+                onRefTouchStart={handleRefTouchStart}
+                dropTargetSha={dropTargetSha}
+                onDragOverCommit={handleCommitDragOver}
+                onDragLeaveCommit={handleCommitDragLeave}
+                onDropCommit={handleCommitDrop}
+                worktreeBranches={worktreeBranches}
               />
             )}
             {contextMenu?.isOpen && (
@@ -1389,6 +2214,7 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
                 onDropCommit={handleDropCommit}
                 onMerge={hasLiveCommits ? handleMerge : undefined}
                 onRebase={hasLiveCommits ? handleRebase : undefined}
+                onInteractiveRebase={hasLiveCommits ? handleInteractiveRebase : undefined}
                 onReset={hasLiveCommits ? handleReset : undefined}
                 onSelectForCompare={handleCompareWithParent}
                 onPinCommit={handlePinCommit}
@@ -1466,6 +2292,13 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
                 onRebase={handleExecuteRebase}
               />
             )}
+            <InteractiveRebaseDialog
+              onClose={handleCloseInteractiveRebase}
+              onStart={handleStartInteractiveRebase}
+              onContinue={handleContinueInteractiveRebase}
+              onAbort={handleAbortInteractiveRebase}
+              onSkip={handleSkipInteractiveRebase}
+            />
             {resetDialog.isOpen && (
               <ResetDialog
                 target={resetDialog.target}
@@ -1476,6 +2309,18 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
                 isOpen={resetDialog.isOpen}
                 onClose={closeResetDialog}
                 onReset={handleExecuteReset}
+              />
+            )}
+            {branchDropDialog.isOpen && (
+              <BranchDropActionDialog
+                isOpen={branchDropDialog.isOpen}
+                source={branchDropDialog.source}
+                targetSha={branchDropDialog.targetSha}
+                targetShortSha={
+                  rawCommits.find((commit) => commit.sha === branchDropDialog.targetSha)?.shortSha
+                }
+                onClose={closeBranchDropDialog}
+                onConfirm={handleBranchDropConfirm}
               />
             )}
             {cherryPickDialog.isOpen && (
@@ -1522,10 +2367,114 @@ export const GitGraphView: React.FC<GitGraphViewProps> = ({ searchDebounceMs = 2
                 }}
               />
             )}
+            <FetchDialog
+              isOpen={fetchDialogOpen}
+              remotes={remotes}
+              defaultRemote={defaultRemote}
+              progress={dialogProgress}
+              progressMessage={dialogProgressMessage}
+              isRunning={activeDialogOperation?.kind === 'fetch'}
+              error={syncDialogError}
+              onClose={closeFetchDialog}
+              onFetch={handleExecuteFetch}
+            />
+            <PullDialog
+              isOpen={pullDialogOpen}
+              currentBranch={activeRepo?.currentBranch}
+              remotes={remotes}
+              defaultRemote={pullDefaults.remote ?? defaultRemote}
+              defaultBranch={pullDefaults.branch}
+              progress={dialogProgress}
+              progressMessage={dialogProgressMessage}
+              isRunning={activeDialogOperation?.kind === 'pull'}
+              error={syncDialogError}
+              onClose={closePullDialog}
+              onPull={handleExecutePull}
+            />
+            <PushDialog
+              isOpen={pushDialogOpen}
+              branchName={pushTargetBranch}
+              currentBranch={activeRepo?.currentBranch}
+              remotes={remotes}
+              defaultRemote={defaultRemote}
+              upstream={
+                pushTargetBranch && pushTargetBranch !== activeRepo?.currentBranch
+                  ? undefined
+                  : syncStatus?.upstream
+              }
+              ahead={
+                pushTargetBranch && pushTargetBranch !== activeRepo?.currentBranch
+                  ? 0
+                  : (syncStatus?.ahead ?? 0)
+              }
+              behind={
+                pushTargetBranch && pushTargetBranch !== activeRepo?.currentBranch
+                  ? 0
+                  : (syncStatus?.behind ?? 0)
+              }
+              progress={dialogProgress}
+              progressMessage={dialogProgressMessage}
+              isRunning={activeDialogOperation?.kind === 'push'}
+              error={syncDialogError}
+              onClose={closePushDialog}
+              onPush={handleExecutePush}
+            />
+            <RemoteManagerDialog
+              isOpen={remoteManagerOpen}
+              remotes={remotes}
+              isLoading={remotesLoading}
+              error={syncDialogError ?? remotesError}
+              isRunning={activeDialogOperation?.kind === 'remote'}
+              onClose={closeRemoteManager}
+              onRefresh={refreshRemotes}
+              onAdd={handleAddRemote}
+              onRemove={handleRemoveRemote}
+              onRename={handleRenameRemote}
+              onSetUrl={handleSetRemoteUrl}
+            />
+            <WorktreeManagerDialog
+              isOpen={worktreeDialogOpen}
+              worktrees={gitWorktrees}
+              currentPath={currentWorktreePath}
+              isLoading={isLoadingWorktrees}
+              error={worktreeDialogError ?? worktreesError}
+              isRunning={activeDialogOperation?.kind === 'worktree'}
+              onClose={() => setWorktreeDialogOpen(false)}
+              onRefresh={refreshWorktrees}
+              onAdd={handleAddWorktree}
+              onRemove={handleRemoveWorktree}
+              onOpen={handleOpenWorktree}
+            />
+            <SubmoduleStatusDialog
+              isOpen={submoduleDialogOpen}
+              submodules={submodules}
+              isLoading={isLoadingSubmodules}
+              error={submoduleDialogError ?? submodulesError}
+              onClose={() => setSubmoduleDialogOpen(false)}
+              onRefresh={refreshSubmodules}
+              onOpen={(submodulePath) => {
+                if (activeRepo) {
+                  requestOpenSubmodule({ repositoryId: activeRepo.id, path: submodulePath });
+                }
+              }}
+            />
             {toast && <Toast toast={toast} />}
           </>
         )}
       </main>
+
+      <SettingsDialog isOpen={settingsDialogOpen} onClose={closeSettingsDialog} />
+
+      {touchDragState && (
+        <div
+          className="branch-drag-ghost"
+          style={{ left: touchDragState.x + 12, top: touchDragState.y + 12 }}
+          aria-hidden="true"
+          data-testid="branch-drag-ghost"
+        >
+          {touchDragState.source.name}
+        </div>
+      )}
 
       {/* Footer / Status Bar (Hidden for full height table) */}
       <footer className="status-bar" role="contentinfo" style={{ display: 'none' }}>

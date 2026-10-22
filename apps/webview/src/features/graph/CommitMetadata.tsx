@@ -11,6 +11,11 @@ export interface CommitMetadataProps {
   className?: string;
   onCheckoutRef?: (ref: RefBadgeItem) => void;
   onContextMenuRef?: (ref: RefBadgeItem, e: React.MouseEvent) => void;
+  draggableRefs?: boolean;
+  onRefDragStart?: (ref: RefBadgeItem, e: React.DragEvent<HTMLSpanElement>) => void;
+  onRefDragEnd?: (ref: RefBadgeItem, e: React.DragEvent<HTMLSpanElement>) => void;
+  onRefTouchStart?: (ref: RefBadgeItem, e: React.TouchEvent<HTMLSpanElement>) => void;
+  worktreeBranches?: ReadonlyMap<string, string>;
 }
 
 export const CommitMetadata: React.FC<CommitMetadataProps> = React.memo(
@@ -24,11 +29,23 @@ export const CommitMetadata: React.FC<CommitMetadataProps> = React.memo(
     className = '',
     onCheckoutRef,
     onContextMenuRef,
+    draggableRefs = false,
+    onRefDragStart,
+    onRefDragEnd,
+    onRefTouchStart,
+    worktreeBranches,
   }) => {
     // Combine local and remote branches pointing to the same commit into unified badges
     const processedRefs = useMemo(() => {
-      return combineLocalAndRemoteRefs(refs, showRemoteBranches, showTags);
-    }, [refs, showRemoteBranches, showTags]);
+      const combined = combineLocalAndRemoteRefs(refs, showRemoteBranches, showTags);
+      if (!worktreeBranches || worktreeBranches.size === 0) {
+        return combined;
+      }
+      return combined.map((ref) => {
+        const worktreePath = worktreeBranches.get(ref.name);
+        return worktreePath ? { ...ref, worktreePath } : ref;
+      });
+    }, [refs, showRemoteBranches, showTags, worktreeBranches]);
 
     return (
       <div className={`commit-metadata-wrapper ${className}`} data-testid="commit-metadata">
@@ -42,6 +59,11 @@ export const CommitMetadata: React.FC<CommitMetadataProps> = React.memo(
                 color={badgeColor}
                 onDoubleClick={onCheckoutRef}
                 onContextMenu={onContextMenuRef}
+                draggable={draggableRefs && (ref.type === 'localBranch' || ref.type === 'branch')}
+                onDragStart={onRefDragStart}
+                onDragEnd={onRefDragEnd}
+                onTouchStart={onRefTouchStart}
+                worktreePath={ref.worktreePath}
               />
             ))}
           </div>

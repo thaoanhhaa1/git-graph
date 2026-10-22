@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import * as os from 'node:os';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -8,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, '..');
+const packageVersion = JSON.parse(readFileSync(resolve(rootDir, 'package.json'), 'utf8')).version;
 
 const args = new Map(
   process.argv.slice(2).map((arg) => {
@@ -28,6 +30,11 @@ const syntheticSizes = args.has('sizes')
     : FULL_SYNTHETIC_SIZES;
 const repeatCount = Number.parseInt(String(args.get('repeat') ?? '3'), 10);
 const outputPath = resolve(rootDir, String(args.get('output') ?? 'docs/benchmark-report.json'));
+const markdownPath = resolve(rootDir, String(args.get('markdown') ?? 'docs/benchmark-report.md'));
+const baselinePath = resolve(
+  rootDir,
+  String(args.get('baseline') ?? 'docs/benchmark-baseline-v0.2.1.json'),
+);
 
 const gitGraph = await import(resolve(rootDir, 'packages/git-graph/dist/index.js'));
 const shared = await import(resolve(rootDir, 'packages/shared/dist/index.js'));
@@ -162,6 +169,69 @@ function benchmarkSynthetic() {
     }
   }
   return results;
+}
+
+/**
+ * Measures the v1.0.0 performance targets on a realistic 500-commit page.
+ * Search is exercised against 100K pre-normalized commits to mirror the
+ * webview's incremental search path.
+ */
+function benchmarkTargets() {
+  const pageSize = 500;
+  const commits = generateMergeCommits(pageSize * 2);
+  const firstPage = commits.slice(0, pageSize);
+  const secondPage = commits.slice(pageSize, pageSize * 2);
+
+  const firstPageGraph = buildCommitGraph(firstPage);
+  const graphLayout = measure(`target:graph-layout:${pageSize}`, () => buildCommitGraph(firstPage));
+  const initialRender = measure(`target:initial-render:${pageSize}`, () => {
+    const graph = buildCommitGraph(firstPage);
+    const payload = {
+      requestId: 'bench-target-initial',
+      repositoryId: 'synthetic',
+      page: { commits: firstPage, cursor: String(pageSize), hasMore: true },
+    };
+    const serialized = createMessage('commits.page.result', payload);
+    JSON.stringify(serialized);
+    splitCommitPageIntoChunks(payload.page, DEFAULT_CHUNK_SIZE);
+    return { rows: graph.rows.length };
+  });
+  const pageLoad = measure(`target:page-load:${pageSize}`, () =>
+    buildCommitGraph(secondPage, {
+      continuation: firstPageGraph.continuation,
+      startRow: pageSize,
+      totalPageRows: pageSize * 2,
+    }),
+  );
+
+  const searchCorpus = 100_000;
+  const searchCommits = generateLinearCommits(searchCorpus).map((commit) => ({
+    ...commit,
+    subjectLower: commit.subject.toLowerCase(),
+  }));
+  const search = measure(
+    `target:search:${searchCorpus}`,
+    () => {
+      const query = 'synthetic commit 9999';
+      let matches = 0;
+      for (const commit of searchCommits) {
+        if (commit.subjectLower.includes(query)) {
+          matches += 1;
+        }
+      }
+      return { matches, corpus: searchCommits.length };
+    },
+    Math.min(repeatCount, 5),
+  );
+
+  return {
+    pageSize,
+    searchCorpus,
+    graphLayout,
+    initialRender,
+    pageLoad,
+    search,
+  };
 }
 
 function git(args, options = {}) {
@@ -357,7 +427,7 @@ function benchmarkRealRepository() {
 
 function benchmarkStressAndMemory() {
   const isQuick = args.has('quick');
-  const totalPages = isQuick ? 20 : 100;
+  const totalPages = isQuick ? 20 : 200;
   const pageSize = 500;
   const totalCommits = totalPages * pageSize;
 
@@ -469,7 +539,10 @@ function benchmarkStressAndMemory() {
   const postGcHeap = process.memoryUsage().heapUsed;
   const postGcHeapMB = Number((postGcHeap / (1024 * 1024)).toFixed(2));
   const peakHeapMB = Number((peakHeap / (1024 * 1024)).toFixed(2));
-  const memoryUnderLimit = peakHeapMB < 120;
+  const memoryUnderStrictLimit = peakHeapMB < 120;
+  const memoryTargetLimitMB = 150;
+  const memoryUnderTarget = peakHeapMB < memoryTargetLimitMB;
+  const averageScrollStepMs = scrollTotalMs / scrollSteps;
 
   return {
     totalPages,
@@ -478,13 +551,17 @@ function benchmarkStressAndMemory() {
     paginationTotalMs: Number(paginationTotalMs.toFixed(2)),
     averagePageMs: Number((paginationTotalMs / totalPages).toFixed(2)),
     scrollTotalMs: Number(scrollTotalMs.toFixed(2)),
-    averageScrollStepMs: Number((scrollTotalMs / scrollSteps).toFixed(3)),
+    scrollSteps,
+    averageScrollStepMs: Number(averageScrollStepMs.toFixed(3)),
+    scrollFrameMs: Number(averageScrollStepMs.toFixed(3)),
     memoryProfile: {
       initialHeapMB: Number((initialHeap / (1024 * 1024)).toFixed(2)),
       peakHeapMB,
       postGcHeapMB,
-      targetLimitMB: 120,
-      passed: memoryUnderLimit,
+      strictLimitMB: 120,
+      targetLimitMB: memoryTargetLimitMB,
+      passed: memoryUnderStrictLimit,
+      passedTarget: memoryUnderTarget,
     },
     lruLimits: {
       detailsCacheLimit: DETAILS_CACHE_LIMIT,
@@ -502,8 +579,168 @@ function benchmarkStressAndMemory() {
   };
 }
 
+function readBaseline(path) {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
+function extractTargetMetrics(report) {
+  const targets = report?.targets ?? {};
+  const value = (key, field) => targets[key]?.[field];
+  return {
+    initialRenderMs: value('initialRenderMs', 'actualMs'),
+    pageLoadMs: value('pageLoadMs', 'actualMs'),
+    graphLayoutMs: value('graphLayoutMs', 'actualMs'),
+    searchMs: value('searchMs', 'actualMs'),
+    memoryMB: value('memoryMB', 'actualMB'),
+    scrollFrameMs: value('scrollFrameMs', 'actualMs'),
+  };
+}
+
+const targetLabels = {
+  initialRenderMs: { label: 'Initial render (500 commits)', unit: 'ms' },
+  pageLoadMs: { label: 'Page load (next 500 commits)', unit: 'ms' },
+  graphLayoutMs: { label: 'Graph layout (500 commits)', unit: 'ms' },
+  searchMs: { label: 'Search (100K loaded commits)', unit: 'ms' },
+  memoryMB: { label: 'Memory (100K commits paged)', unit: 'MB' },
+  scrollFrameMs: { label: 'Scroll frame time', unit: 'ms' },
+};
+
+function buildComparison(currentMetrics, baselineMetrics) {
+  if (!baselineMetrics) {
+    return undefined;
+  }
+  return Object.keys(targetLabels).map((key) => {
+    const baseline = baselineMetrics[key];
+    const current = currentMetrics[key];
+    const deltaPercent =
+      typeof baseline === 'number' && baseline !== 0 && typeof current === 'number'
+        ? ((current - baseline) / baseline) * 100
+        : undefined;
+    return {
+      key,
+      label: targetLabels[key].label,
+      baseline: baseline ?? null,
+      current: current ?? null,
+      deltaPercent: deltaPercent === undefined ? null : Number(deltaPercent.toFixed(2)),
+    };
+  });
+}
+
+function formatMetric(value, digits = 2) {
+  return typeof value === 'number' ? value.toFixed(digits) : 'n/a';
+}
+
+function renderMarkdown(report) {
+  const lines = [];
+  const targets = report.targets;
+  const comparison = report.comparison;
+
+  lines.push('# Git Graph Benchmark Report');
+  lines.push('');
+  lines.push(
+    `Generated **${report.startedAt}** on ${report.environment.platform} (${report.environment.arch}), Node ${report.environment.node}, ${report.environment.cpu}.`,
+  );
+  lines.push('');
+  lines.push(`Mode: **${report.mode}** · repeated samples: **${report.repeatCount}**`);
+  lines.push('');
+  lines.push('## v1.0.0 performance targets');
+  lines.push('');
+  lines.push('| Metric | Target | Measured | Status |');
+  lines.push('| :--- | ---: | ---: | :--- |');
+  for (const key of Object.keys(targetLabels)) {
+    const entry = targets[key];
+    const unit = targetLabels[key].unit;
+    const targetValue = entry.targetMs ?? entry.targetMB;
+    const actualValue = entry.actualMs ?? entry.actualMB;
+    lines.push(
+      `| ${targetLabels[key].label} | < ${targetValue} ${unit} | ${formatMetric(actualValue)} ${unit} | ${entry.passed ? 'Pass' : 'Fail'} |`,
+    );
+  }
+  lines.push('');
+
+  if (comparison) {
+    lines.push('## v0.2.1 → v1.0.0 comparison');
+    lines.push('');
+    lines.push('| Metric | v0.2.1 | v1.0.0 | Delta |');
+    lines.push('| :--- | ---: | ---: | ---: |');
+    for (const entry of comparison) {
+      const unit = targetLabels[entry.key].unit;
+      const delta =
+        entry.deltaPercent === null
+          ? 'n/a'
+          : `${entry.deltaPercent > 0 ? '+' : ''}${entry.deltaPercent.toFixed(2)}%`;
+      lines.push(
+        `| ${entry.label} | ${formatMetric(entry.baseline)} ${unit} | ${formatMetric(entry.current)} ${unit} | ${delta} |`,
+      );
+    }
+    lines.push('');
+    lines.push(
+      '> Baseline captured from the v0.2.1 code line before the 1.0.0 version bump. Run-to-run variance applies.',
+    );
+    lines.push('');
+  } else {
+    lines.push('## v0.2.1 → v1.0.0 comparison');
+    lines.push('');
+    lines.push('Baseline report not found; comparison skipped.');
+    lines.push('');
+  }
+
+  lines.push('## Synthetic layout results');
+  lines.push('');
+  lines.push('| Commits | Topology | Graph median (ms) | Serialize (ms) | Chunks | Virtual rows |');
+  lines.push('| ---: | :--- | ---: | ---: | ---: | ---: |');
+  for (const entry of report.synthetic) {
+    lines.push(
+      `| ${entry.size} | ${entry.topology} | ${formatMetric(entry.graph.medianMs)} | ${formatMetric(entry.firstPageSerialization.medianMs)} | ${entry.chunking.result.chunks} | ${entry.domRows.result.renderedRows} |`,
+    );
+  }
+  lines.push('');
+
+  lines.push('## Stress, memory & scroll');
+  lines.push('');
+  lines.push('| Metric | Value |');
+  lines.push('| :--- | ---: |');
+  lines.push(`| Paged commits | ${report.stressAndMemory.totalCommits} |`);
+  lines.push(`| Average page build | ${formatMetric(report.stressAndMemory.averagePageMs)} ms |`);
+  lines.push(`| Peak heap | ${formatMetric(report.stressAndMemory.memoryProfile.peakHeapMB)} MB |`);
+  lines.push(
+    `| Strict budget (<120MB) | ${report.stressAndMemory.memoryProfile.passed ? 'Pass' : 'Fail'} |`,
+  );
+  lines.push(
+    `| v1.0.0 budget (<150MB) | ${report.stressAndMemory.memoryProfile.passedTarget ? 'Pass' : 'Fail'} |`,
+  );
+  lines.push(`| LRU eviction | ${report.stressAndMemory.lruLimits.passed ? 'Pass' : 'Fail'} |`);
+  lines.push(
+    `| Repository switching | ${report.stressAndMemory.repoSwitching.passed ? 'Pass' : 'Fail'} |`,
+  );
+  lines.push(`| Scroll frame time | ${formatMetric(report.stressAndMemory.scrollFrameMs)} ms |`);
+  lines.push('');
+  lines.push('## Repositories');
+  lines.push('');
+  lines.push(
+    `- Fixture repository: tags=${report.fixtureRepository.tags}, remote branches=${report.fixtureRepository.remoteBranches}, rename probe=${report.fixtureRepository.renameProbe.available}`,
+  );
+  if (report.realRepository.available) {
+    lines.push(
+      `- Real repository: ${report.realRepository.commits} commits sampled, ${report.realRepository.tags} tags, ${report.realRepository.remotes.length} remotes`,
+    );
+  } else {
+    lines.push(`- Real repository: skipped (${report.realRepository.reason})`);
+  }
+  lines.push('');
+  lines.push('> Reports are generated by `npm run benchmark`. JSON output is ignored by Git;');
+  lines.push('> this Markdown summary and the v0.2.1 baseline JSON are checked in.');
+  lines.push('');
+  return lines.join('\n');
+}
+
 const startedAt = new Date().toISOString();
 const stressAndMemory = benchmarkStressAndMemory();
+const targetMetrics = benchmarkTargets();
 const synthetic = benchmarkSynthetic();
 const fixtureRepository = benchmarkFixtureRepository();
 const realRepository = benchmarkRealRepository();
@@ -512,11 +749,75 @@ const graph10k = synthetic.find((item) => item.size === 10_000 && item.topology 
 const firstPageLinear = synthetic.find(
   (item) => item.size === syntheticSizes[0] && item.topology === 'linear',
 );
+
+const peakHeapMB = stressAndMemory.memoryProfile.peakHeapMB;
+const scrollFrameMs = stressAndMemory.scrollFrameMs;
+const targets = {
+  initialRenderMs: {
+    targetMs: 200,
+    actualMs: targetMetrics.initialRender.medianMs,
+    passed: targetMetrics.initialRender.medianMs < 200,
+  },
+  pageLoadMs: {
+    targetMs: 100,
+    actualMs: targetMetrics.pageLoad.medianMs,
+    passed: targetMetrics.pageLoad.medianMs < 100,
+  },
+  graphLayoutMs: {
+    targetMs: 50,
+    actualMs: targetMetrics.graphLayout.medianMs,
+    passed: targetMetrics.graphLayout.medianMs < 50,
+  },
+  searchMs: {
+    targetMs: 50,
+    actualMs: targetMetrics.search.medianMs,
+    passed: targetMetrics.search.medianMs < 50,
+    corpus: targetMetrics.searchCorpus,
+  },
+  memoryMB: {
+    targetMB: 150,
+    actualMB: peakHeapMB,
+    pagedCommits: stressAndMemory.totalCommits,
+    passed: peakHeapMB < 150,
+  },
+  scrollFrameMs: {
+    targetMs: 16,
+    actualMs: scrollFrameMs,
+    passed: scrollFrameMs < 16,
+  },
+};
+
+const currentMetrics = Object.fromEntries(
+  Object.entries(targets).map(([key, entry]) => [key, entry.actualMs ?? entry.actualMB]),
+);
+const baselineReport = readBaseline(baselinePath);
+const baselineMetrics = baselineReport ? extractTargetMetrics(baselineReport) : undefined;
+const comparison = buildComparison(currentMetrics, baselineMetrics);
+const targetsPassed = Object.values(targets).every((entry) => entry.passed);
+
 const report = {
   startedAt,
+  version: packageVersion,
   mode: args.has('quick') ? 'quick' : 'full',
   repeatCount,
   syntheticSizes,
+  environment: {
+    platform: os.platform(),
+    arch: os.arch(),
+    node: process.version,
+    cpu: os.cpus()[0]?.model ?? 'unknown CPU',
+  },
+  targets,
+  targetsPassed,
+  comparison,
+  targetMetrics: {
+    pageSize: targetMetrics.pageSize,
+    searchCorpus: targetMetrics.searchCorpus,
+    graphLayout: targetMetrics.graphLayout,
+    initialRender: targetMetrics.initialRender,
+    pageLoad: targetMetrics.pageLoad,
+    search: targetMetrics.search,
+  },
   budgets: {
     panelSkeletonMs: 300,
     first500CommitsMs: 2_000,
@@ -531,11 +832,13 @@ const report = {
     virtualRowsAt500k: estimateVisibleRows(500_000),
     fixtureRepositoryAvailable: fixtureRepository.available,
     realRepositoryAvailable: realRepository.available,
+    targetsPassed,
     stressAndMemory: {
       totalCommits: stressAndMemory.totalCommits,
-      peakHeapMB: stressAndMemory.memoryProfile.peakHeapMB,
+      peakHeapMB,
       targetLimitMB: stressAndMemory.memoryProfile.targetLimitMB,
       memoryPassed: stressAndMemory.memoryProfile.passed,
+      memoryPassedTarget: stressAndMemory.memoryProfile.passedTarget,
       lruPassed: stressAndMemory.lruLimits.passed,
       averagePageMs: stressAndMemory.averagePageMs,
     },
@@ -546,18 +849,39 @@ const report = {
   stressAndMemory,
 };
 
+if (args.has('save-baseline')) {
+  mkdirSync(dirname(baselinePath), { recursive: true });
+  writeFileSync(baselinePath, `${JSON.stringify(report, null, 2)}\n`);
+  console.log(`Baseline report written to ${baselinePath}`);
+}
+
 mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`);
+mkdirSync(dirname(markdownPath), { recursive: true });
+writeFileSync(markdownPath, renderMarkdown(report));
 
 console.log(`Git Graph benchmark report written to ${outputPath}`);
+console.log(`Markdown summary written to ${markdownPath}`);
+if (comparison) {
+  console.log(`Comparison baseline: ${baselinePath}`);
+}
 console.log(`Mode: ${report.mode}; sizes: ${syntheticSizes.join(', ')}; repeats: ${repeatCount}`);
+console.log(`Targets passed: ${targetsPassed ? 'yes' : 'no'}`);
+for (const key of Object.keys(targetLabels)) {
+  const entry = targets[key];
+  const unit = targetLabels[key].unit;
+  const value = entry.actualMs ?? entry.actualMB;
+  console.log(
+    `  ${targetLabels[key].label}: ${formatMetric(value)} ${unit} (target < ${entry.targetMs ?? entry.targetMB} ${unit}) ${entry.passed ? 'yes' : 'no'}`,
+  );
+}
 console.log(`Graph 10K linear median: ${report.summary.graph10kLinearMedianMs ?? 'n/a'} ms`);
 console.log(
   `First-page serialization median: ${report.summary.firstPageLinearSerializationMedianMs ?? 'n/a'} ms`,
 );
 console.log(`Virtual rows at 500K commits: ${report.summary.virtualRowsAt500k}`);
 console.log(
-  `Stress & Memory: ${stressAndMemory.totalCommits} commits, peak heap: ${stressAndMemory.memoryProfile.peakHeapMB}MB (<120MB: ${stressAndMemory.memoryProfile.passed}), LRU passed: ${stressAndMemory.lruLimits.passed}`,
+  `Stress & Memory: ${stressAndMemory.totalCommits} commits, peak heap: ${peakHeapMB}MB (<120MB: ${stressAndMemory.memoryProfile.passed}, <150MB: ${stressAndMemory.memoryProfile.passedTarget}), LRU passed: ${stressAndMemory.lruLimits.passed}`,
 );
 console.log(
   `Fixture repo: ${fixtureRepository.tags} tag(s), ${fixtureRepository.remoteBranches} remote branch(es), rename=${fixtureRepository.renameProbe.available}`,

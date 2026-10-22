@@ -58,6 +58,216 @@ export class Uri {
   }
 }
 
+export class Position {
+  constructor(
+    public readonly line: number,
+    public readonly character: number,
+  ) {}
+
+  public isEqual(other: Position): boolean {
+    return this.line === other.line && this.character === other.character;
+  }
+
+  public isBefore(other: Position): boolean {
+    return this.line < other.line || (this.line === other.line && this.character < other.character);
+  }
+}
+
+export class Range {
+  public readonly start: Position;
+  public readonly end: Position;
+
+  constructor(startLine: number, startCharacter: number, endLine: number, endCharacter: number);
+  constructor(start: Position, end: Position);
+  constructor(
+    startOrLine: Position | number,
+    startCharacterOrEnd: Position | number,
+    endLine?: number,
+    endCharacter?: number,
+  ) {
+    if (startOrLine instanceof Position && startCharacterOrEnd instanceof Position) {
+      this.start = startOrLine;
+      this.end = startCharacterOrEnd;
+    } else {
+      this.start = new Position(Number(startOrLine), Number(startCharacterOrEnd));
+      this.end = new Position(endLine ?? 0, endCharacter ?? 0);
+    }
+  }
+
+  public get isEmpty(): boolean {
+    return this.start.isEqual(this.end);
+  }
+
+  public isEqual(other: Range): boolean {
+    return this.start.isEqual(other.start) && this.end.isEqual(other.end);
+  }
+}
+
+export class Selection extends Range {
+  public readonly anchor: Position;
+  public readonly active: Position;
+
+  constructor(anchor: Position, active: Position) {
+    super(anchor, active);
+    this.anchor = anchor;
+    this.active = active;
+  }
+
+  public get isReversed(): boolean {
+    return this.active.isBefore(this.anchor);
+  }
+}
+
+export class MarkdownString {
+  public value = '';
+  public isTrusted = false;
+  public supportHtml = false;
+
+  constructor(value = '') {
+    this.value = value;
+  }
+
+  public appendText(value: string): MarkdownString {
+    this.value += value;
+    return this;
+  }
+
+  public appendMarkdown(value: string): MarkdownString {
+    this.value += value;
+    return this;
+  }
+
+  public appendCodeblock(value: string, _language?: string): MarkdownString {
+    this.value += `\n\n\`\`\`\n${value}\n\`\`\`\n\n`;
+    return this;
+  }
+}
+
+export class Hover {
+  public readonly contents: MarkdownString[];
+  public readonly range?: Range;
+
+  constructor(contents: MarkdownString | MarkdownString[], range?: Range) {
+    this.contents = Array.isArray(contents) ? contents : [contents];
+    this.range = range;
+  }
+}
+
+export class ThemeColor {
+  constructor(public readonly id: string) {}
+}
+
+export enum DecorationRangeBehavior {
+  OpenOpen = 0,
+  ClosedClosed = 1,
+  OpenClosed = 2,
+  ClosedOpen = 3,
+}
+
+export enum OverviewRulerLane {
+  Left = 1,
+  Center = 2,
+  Right = 4,
+  Full = 7,
+}
+
+export class MockTextLine {
+  public readonly range: Range;
+  public readonly text: string;
+
+  constructor(
+    public readonly lineNumber: number,
+    text: string,
+  ) {
+    this.text = text;
+    this.range = new Range(lineNumber, 0, lineNumber, text.length);
+  }
+}
+
+export class MockTextDocument {
+  public readonly uri: Uri;
+  public readonly languageId = 'typescript';
+  public version = 1;
+  public isClosed = false;
+  public readonly lines: string[];
+
+  constructor(filePath: string, content = '') {
+    this.uri = Uri.file(filePath);
+    this.lines = content.split('\n');
+  }
+
+  public get lineCount(): number {
+    return this.lines.length;
+  }
+
+  public getText(): string {
+    return this.lines.join('\n');
+  }
+
+  public lineAt(lineOrPosition: number | Position): MockTextLine {
+    const line = typeof lineOrPosition === 'number' ? lineOrPosition : lineOrPosition.line;
+    return new MockTextLine(line, this.lines[line] ?? '');
+  }
+}
+
+export class MockTextEditorDecorationType {
+  private static _nextId = 1;
+  public readonly key: string;
+
+  constructor(public readonly options: unknown) {
+    this.key = `decoration-${MockTextEditorDecorationType._nextId++}`;
+  }
+
+  public dispose(): void {}
+}
+
+export const createdDecorationTypes: MockTextEditorDecorationType[] = [];
+
+export class MockTextEditor {
+  public options: Record<string, unknown> = {};
+  public readonly appliedDecorations = new Map<MockTextEditorDecorationType, readonly unknown[]>();
+  public document: MockTextDocument;
+  public selection: Selection;
+  public visibleRanges: Range[] | undefined;
+
+  constructor(
+    document: MockTextDocument,
+    selection: Selection = new Selection(new Position(0, 0), new Position(0, 0)),
+  ) {
+    this.document = document;
+    this.selection = selection;
+  }
+
+  public setDecorations(
+    decorationType: MockTextEditorDecorationType,
+    decorations: readonly unknown[],
+  ): void {
+    this.appliedDecorations.set(decorationType, decorations);
+  }
+}
+
+export interface MockHoverProvider {
+  provideHover(
+    document: MockTextDocument,
+    position: Position,
+    token?: unknown,
+  ): Promise<Hover | undefined>;
+}
+
+export const hoverProviders: Array<{ selector: unknown; provider: MockHoverProvider }> = [];
+
+export const configurationValues = new Map<string, unknown>();
+export const configurationUpdates: Array<{ key: string; value: unknown; target?: unknown }> = [];
+
+export function setMockConfigurationValue(key: string, value: unknown): void {
+  configurationValues.set(key, value);
+}
+
+export function resetMockConfiguration(): void {
+  configurationValues.clear();
+  configurationUpdates.length = 0;
+}
+
 export enum ViewColumn {
   Active = -1,
   Beside = -2,
@@ -340,12 +550,36 @@ export interface WindowState {
 
 const _onDidChangeWindowStateEmitter = new EventEmitter<WindowState>();
 const _onDidChangeActiveTextEditorEmitter = new EventEmitter<unknown>();
+const _onDidChangeVisibleTextEditorsEmitter = new EventEmitter<readonly unknown[]>();
+const _onDidChangeTextEditorVisibleRangesEmitter = new EventEmitter<{
+  textEditor: unknown;
+  visibleRanges: readonly Range[];
+}>();
 
 export const window = {
-  activeTextEditor: undefined as { viewColumn?: ViewColumn; document?: { uri: Uri } } | undefined,
+  activeTextEditor: undefined as
+    { viewColumn?: ViewColumn; document?: { uri: Uri }; selection?: Selection } | undefined,
+  visibleTextEditors: [] as MockTextEditor[],
+  _setVisibleTextEditors(editors: MockTextEditor[]): void {
+    window.visibleTextEditors = editors;
+    _onDidChangeVisibleTextEditorsEmitter.fire(editors);
+  },
+  onDidChangeVisibleTextEditors: _onDidChangeVisibleTextEditorsEmitter.event,
+  onDidChangeTextEditorVisibleRanges: _onDidChangeTextEditorVisibleRangesEmitter.event,
+  _fireDidChangeTextEditorVisibleRanges: (textEditor: unknown): void =>
+    _onDidChangeTextEditorVisibleRangesEmitter.fire({
+      textEditor,
+      visibleRanges: (textEditor as { visibleRanges?: readonly Range[] }).visibleRanges ?? [],
+    }),
+  createTextEditorDecorationType: (options?: unknown): MockTextEditorDecorationType => {
+    const decorationType = new MockTextEditorDecorationType(options);
+    createdDecorationTypes.push(decorationType);
+    return decorationType;
+  },
   activeColorTheme: { kind: ColorThemeKind.Dark } as { kind: ColorThemeKind },
   showInformationMessage: (_msg: string, ..._items: unknown[]) => Promise.resolve(undefined),
   showWarningMessage: (_msg: string, ..._items: unknown[]) => Promise.resolve(undefined),
+  showErrorMessage: (_msg: string, ..._items: unknown[]) => Promise.resolve(undefined),
   showInputBox: (_options?: unknown) => Promise.resolve(undefined),
   showQuickPick: (_items: unknown, _options?: unknown) => Promise.resolve(undefined),
   showTextDocument: async (_docOrUri: unknown, _options?: unknown) => ({}),
@@ -380,17 +614,54 @@ const _onDidChangeWorkspaceFoldersEmitter = new EventEmitter<void>();
 const _onDidChangeConfigurationEmitter = new EventEmitter<{
   affectsConfiguration: (section: string) => boolean;
 }>();
+const _onDidChangeTextDocumentEmitter = new EventEmitter<{
+  document: MockTextDocument;
+  contentChanges: unknown[];
+}>();
+const _onDidSaveTextDocumentEmitter = new EventEmitter<MockTextDocument>();
+const _onDidCloseTextDocumentEmitter = new EventEmitter<MockTextDocument>();
 
 export const workspace = {
+  textDocuments: [] as MockTextDocument[],
+  onDidChangeTextDocument: _onDidChangeTextDocumentEmitter.event,
+  onDidSaveTextDocument: _onDidSaveTextDocumentEmitter.event,
+  onDidCloseTextDocument: _onDidCloseTextDocumentEmitter.event,
+  _fireDidChangeTextDocument: (document: MockTextDocument): void =>
+    _onDidChangeTextDocumentEmitter.fire({ document, contentChanges: [] }),
+  _fireDidSaveTextDocument: (document: MockTextDocument): void =>
+    _onDidSaveTextDocumentEmitter.fire(document),
+  _fireDidCloseTextDocument: (document: MockTextDocument): void => {
+    document.isClosed = true;
+    _onDidCloseTextDocumentEmitter.fire(document);
+  },
+  openTextDocument: async (uriOrPath: Uri | string): Promise<MockTextDocument> => {
+    const path = typeof uriOrPath === 'string' ? uriOrPath : uriOrPath.fsPath;
+    const existing = workspace.textDocuments.find((document) => document.uri.fsPath === path);
+    return existing ?? new MockTextDocument(path);
+  },
+  getWorkspaceFolder: (uri: Uri): { uri: Uri; name: string; index: number } | undefined => {
+    return workspace.workspaceFolders?.find((folder) => uri.fsPath.startsWith(folder.uri.fsPath));
+  },
   workspaceFolders: undefined as Array<{ uri: Uri; name: string; index: number }> | undefined,
   onDidChangeWorkspaceFolders: _onDidChangeWorkspaceFoldersEmitter.event,
   _fireDidChangeWorkspaceFolders: () => _onDidChangeWorkspaceFoldersEmitter.fire(),
   onDidChangeConfiguration: _onDidChangeConfigurationEmitter.event,
   _fireDidChangeConfiguration: (section: string) =>
-    _onDidChangeConfigurationEmitter.fire({ affectsConfiguration: (s: string) => s === section }),
-  getConfiguration: (_section?: string) => ({
-    get: <T>(_key: string, defaultValue?: T): T | undefined => defaultValue,
-    update: async (_key: string, _value: unknown, _target?: unknown): Promise<void> => {},
+    _onDidChangeConfigurationEmitter.fire({
+      affectsConfiguration: (s: string) => s === section || section.startsWith(`${s}.`),
+    }),
+  getConfiguration: (section?: string) => ({
+    get: <T>(key: string, defaultValue?: T): T | undefined => {
+      const fullKey = section ? `${section}.${key}` : key;
+      return configurationValues.has(fullKey)
+        ? (configurationValues.get(fullKey) as T)
+        : defaultValue;
+    },
+    update: async (key: string, value: unknown, target?: unknown): Promise<void> => {
+      const fullKey = section ? `${section}.${key}` : key;
+      configurationValues.set(fullKey, value);
+      configurationUpdates.push({ key: fullKey, value, target });
+    },
   }),
   createFileSystemWatcher: (
     pattern: unknown,
@@ -412,5 +683,29 @@ export const workspace = {
   },
   fs: {
     readFile: async (_uri: Uri): Promise<Uint8Array> => new Uint8Array(),
+  },
+};
+
+export const env = {
+  language: 'en',
+};
+
+export const l10n = {
+  t: (message: string, ...args: Array<string | number | boolean>): string =>
+    message.replace(/\{(\d+)\}/g, (match, index: string) => {
+      const value = args[Number.parseInt(index, 10)];
+      return value === undefined ? match : String(value);
+    }),
+};
+
+export const languages = {
+  registerHoverProvider: (selector: unknown, provider: MockHoverProvider): Disposable => {
+    hoverProviders.push({ selector, provider });
+    return new Disposable(() => {
+      const index = hoverProviders.findIndex((entry) => entry.provider === provider);
+      if (index >= 0) {
+        hoverProviders.splice(index, 1);
+      }
+    });
   },
 };

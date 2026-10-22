@@ -1,21 +1,34 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import {
   AppError,
   AppErrorCode,
+  validateRebasePlan,
   type OperationCheckoutTargetType,
   type OperationMergeFastForwardMode,
   type OperationResetMode,
   type OperationProgressPayload,
   type OperationResultPayload,
+  type OperationPullStrategy,
+  type OperationUndoInfo,
+  type RebasePlanEntry,
+  type ReflogEntry,
+  type RepositorySyncStatus,
   type TagType,
 } from '@git-graph/shared';
-import { GitCommandError, type GitRepository, type GitResult } from '@git-graph/git-core';
+import {
+  GitCommandError,
+  RebasePlanQuery,
+  type GitRepository,
+  type GitResult,
+} from '@git-graph/git-core';
 import type { RepositoryManager } from '../repositories/RepositoryManager';
 import type { RefreshCoordinator } from '../application/RefreshCoordinator';
 import { OperationQueue } from './OperationQueue';
 import { OperationPreflight, type PreflightRequirements } from './OperationPreflight';
+import { t } from '../i18n/l10n';
 import {
   type OperationCommandMetadata,
   type OperationExecutionResult,
@@ -43,6 +56,7 @@ export interface RunOperationOptions<T = unknown> {
   type: string;
   preflight?: PreflightRequirements;
   execute: (context: OperationContext) => Promise<T>;
+  undoLabel?: string;
 }
 
 export interface GitOperationServiceOptions {
@@ -130,6 +144,8 @@ export interface PushBranchOperationOptions {
   remote?: string;
   setUpstream?: boolean;
   force?: boolean;
+  forceWithLease?: boolean;
+  tags?: boolean;
 }
 
 export interface PushBranchOperationData {
@@ -242,13 +258,38 @@ export interface RebaseActionOperationData {
   rebaseState: RebaseState;
 }
 
+export interface InteractiveRebaseOperationOptions {
+  operationId?: string;
+  repositoryId: string;
+  onto: string;
+  plan: RebasePlanEntry[];
+  confirmedPublishedBranch?: boolean;
+}
+
+export interface InteractiveRebaseOperationData {
+  onto: string;
+  ontoSha: string;
+  currentBranch: string;
+  upstream?: string;
+  plan: RebasePlanEntry[];
+  rebaseState: RebaseState;
+}
+
 export interface RebaseState {
   inProgress: boolean;
   headSha?: string;
   originalHeadSha?: string;
   ontoSha?: string;
   currentPatchSha?: string;
+  completedSteps?: number;
+  totalSteps?: number;
   unmergedFiles: string[];
+}
+
+interface InteractiveRebaseSession {
+  tempDir: string;
+  sequenceEditorPath: string;
+  messageEditorPath: string;
 }
 
 export interface CherryPickOperationOptions {
@@ -320,12 +361,110 @@ export interface FetchOperationOptions {
   repositoryId: string;
   remote?: string;
   prune?: boolean;
+  all?: boolean;
 }
 
 export interface FetchOperationData {
   remote: string;
   pruned: boolean;
 }
+
+export interface PullOperationOptions {
+  operationId?: string;
+  repositoryId: string;
+  remote?: string;
+  branch?: string;
+  strategy?: OperationPullStrategy;
+  autostash?: boolean;
+}
+
+export interface PullOperationData {
+  remote?: string;
+  branch?: string;
+  strategy: OperationPullStrategy;
+  autostashed: boolean;
+}
+
+export interface AddRemoteOperationOptions {
+  operationId?: string;
+  repositoryId: string;
+  name: string;
+  url: string;
+}
+
+export interface RemoveRemoteOperationOptions {
+  operationId?: string;
+  repositoryId: string;
+  name: string;
+}
+
+export interface RenameRemoteOperationOptions {
+  operationId?: string;
+  repositoryId: string;
+  oldName: string;
+  newName: string;
+}
+
+export interface SetRemoteUrlOperationOptions {
+  operationId?: string;
+  repositoryId: string;
+  name: string;
+  url: string;
+  push?: boolean;
+}
+
+export interface RemoteOperationData {
+  name: string;
+}
+
+export interface UndoOperationOptions {
+  operationId?: string;
+  repositoryId: string;
+  reflogIndex?: number;
+  expectedSha?: string;
+}
+
+export interface UndoOperationData {
+  targetSha: string;
+  reflogIndex: number;
+  previousHeadSha?: string;
+}
+
+interface UndoHistoryEntry {
+  operationId: string;
+  repositoryId: string;
+  type: string;
+  preHeadSha: string;
+  postHeadSha: string;
+  reflogIndex: number;
+  label: string;
+}
+
+const UNDOABLE_OPERATION_TYPES = new Set([
+  'reset',
+  'merge',
+  'rebase',
+  'cherry-pick',
+  'revert',
+  'commit-create',
+]);
+
+const UNDO_LABELS: Record<string, string> = {
+  reset: 'reset',
+  merge: 'merge',
+  rebase: 'rebase',
+  'cherry-pick': 'cherry-pick',
+  revert: 'revert',
+  'commit-create': 'commit',
+};
+
+const UNDO_UNAVAILABLE_REASONS: Record<string, string> = {
+  'branch-push': 'Undo is not available after pushing to a remote.',
+  'branch-delete': 'Undo is not available after deleting a branch.',
+  'tag-delete': 'Undo is not available after deleting a tag.',
+};
+
+const MAX_UNDO_HISTORY = 20;
 
 export interface StageWorktreeOperationOptions {
   operationId?: string;
@@ -350,6 +489,32 @@ export interface DiscardWorktreeOperationOptions {
 export interface DiscardWorktreeOperationData {
   paths: string[];
   all: boolean;
+}
+
+export interface AddGitWorktreeOperationOptions {
+  operationId?: string;
+  repositoryId: string;
+  path: string;
+  branch?: string;
+  newBranch?: string;
+}
+
+export interface AddGitWorktreeOperationData {
+  path: string;
+  branch?: string;
+  newBranch?: string;
+}
+
+export interface RemoveGitWorktreeOperationOptions {
+  operationId?: string;
+  repositoryId: string;
+  path: string;
+  force?: boolean;
+}
+
+export interface RemoveGitWorktreeOperationData {
+  path: string;
+  force: boolean;
 }
 
 export interface CreateCommitOperationOptions {
@@ -417,6 +582,8 @@ export class GitOperationService implements vscode.Disposable {
   public readonly onDidResult: vscode.Event<OperationResultPayload> = this._onDidResult.event;
 
   private readonly _disposables: vscode.Disposable[] = [];
+  private readonly _undoHistory: UndoHistoryEntry[] = [];
+  private readonly _interactiveRebaseSessions = new Map<string, InteractiveRebaseSession>();
 
   public constructor(options: GitOperationServiceOptions) {
     this._repositoryManager = options.repositoryManager;
@@ -459,6 +626,7 @@ export class GitOperationService implements vscode.Disposable {
       success: result.success,
       error: result.error,
       data: result.data,
+      ...(result.undo ? { undo: result.undo } : {}),
     });
   }
 
@@ -573,12 +741,51 @@ export class GitOperationService implements vscode.Disposable {
           logCommand,
         };
 
+        const isUndoable = UNDOABLE_OPERATION_TYPES.has(options.type);
+        const preHeadSha = isUndoable ? await this._readHeadSha(repository, signal) : undefined;
+
         this._reportProgress(operationId, 0.35, `Executing ${options.type}...`);
 
         this._refreshCoordinator.mute(options.repositoryId);
         try {
           const data = await options.execute(context);
           const durationMs = Date.now() - startTime;
+          let undo: OperationUndoInfo | undefined;
+
+          if (isUndoable) {
+            const postHeadSha = await this._readHeadSha(repository, signal);
+            if (preHeadSha && postHeadSha && preHeadSha !== postHeadSha) {
+              const entry: UndoHistoryEntry = {
+                operationId,
+                repositoryId: options.repositoryId,
+                type: options.type,
+                preHeadSha,
+                postHeadSha,
+                reflogIndex: 1,
+                label: options.undoLabel ?? UNDO_LABELS[options.type] ?? options.type,
+              };
+              this._undoHistory.push(entry);
+              if (this._undoHistory.length > MAX_UNDO_HISTORY) {
+                this._undoHistory.shift();
+              }
+              undo = {
+                available: true,
+                label: entry.label,
+                reflogIndex: entry.reflogIndex,
+                expectedSha: entry.preHeadSha,
+              };
+            } else {
+              undo = {
+                available: false,
+                reason: 'This operation did not change HEAD.',
+              };
+            }
+          } else if (UNDO_UNAVAILABLE_REASONS[options.type]) {
+            undo = {
+              available: false,
+              reason: UNDO_UNAVAILABLE_REASONS[options.type],
+            };
+          }
 
           try {
             await this._repositoryManager.refresh();
@@ -598,6 +805,7 @@ export class GitOperationService implements vscode.Disposable {
             data,
             lastCommandMetadata,
             durationMs,
+            undo,
           );
           this._emitResult(successResult);
           return successResult;
@@ -969,8 +1177,11 @@ export class GitOperationService implements vscode.Disposable {
         if (options.setUpstream) {
           args.push('-u');
         }
-        if (options.force) {
+        if (options.forceWithLease ?? options.force) {
           args.push('--force-with-lease');
+        }
+        if (options.tags) {
+          args.push('--tags');
         }
         args.push(remote, branch);
 
@@ -1363,6 +1574,110 @@ export class GitOperationService implements vscode.Disposable {
     });
   }
 
+  public interactiveRebase(
+    options: InteractiveRebaseOperationOptions,
+  ): Promise<OperationExecutionResult<InteractiveRebaseOperationData>> {
+    const onto = options.onto.trim();
+
+    return this.runOperation<InteractiveRebaseOperationData>({
+      operationId: options.operationId,
+      repositoryId: options.repositoryId,
+      type: 'rebase-interactive',
+      preflight: {
+        requireCleanWorktree: true,
+        disallowBare: true,
+        allowDetachedHead: false,
+      },
+      execute: async (context) => {
+        const head = await this._preflight.checkHead(context.repository);
+        if (!head.currentBranch) {
+          throw new AppError(
+            AppErrorCode.GIT_COMMAND_FAILED,
+            'Interactive rebase requires a checked-out current branch.',
+          );
+        }
+
+        const inProgressState = await this._readRebaseState(context.repository, context.signal);
+        if (inProgressState.inProgress) {
+          throw new AppError(
+            AppErrorCode.GIT_COMMAND_FAILED,
+            'A rebase is already in progress. Continue, abort, or skip it before starting another rebase.',
+            { rebaseState: inProgressState },
+          );
+        }
+
+        const upstream = await this._readCurrentBranchUpstream(context.repository, context.signal);
+        if (upstream && !options.confirmedPublishedBranch) {
+          throw new AppError(
+            AppErrorCode.GIT_COMMAND_FAILED,
+            `Branch '${head.currentBranch}' tracks '${upstream}'. Confirm before rebasing a published branch.`,
+            { currentBranch: head.currentBranch, upstream },
+          );
+        }
+
+        const ontoSha = await this._resolveRebaseTarget(context.repository, onto, context.signal);
+        const todoEntries = [...options.plan].reverse();
+        const validation = validateRebasePlan(todoEntries);
+        if (!validation.valid) {
+          throw new AppError(
+            AppErrorCode.GIT_COMMAND_FAILED,
+            validation.error ?? 'The interactive rebase plan is invalid.',
+          );
+        }
+        if (todoEntries.some((entry) => !/^[0-9a-fA-F]{4,64}$/.test(entry.sha))) {
+          throw new AppError(
+            AppErrorCode.GIT_COMMAND_FAILED,
+            'The interactive rebase plan contains an invalid commit SHA.',
+          );
+        }
+
+        const session = await this._createInteractiveRebaseSession(
+          context.repository,
+          todoEntries,
+          context.signal,
+        );
+        this._cleanupInteractiveRebaseSession(context.repository.id);
+        this._interactiveRebaseSessions.set(context.repository.id, session);
+
+        context.reportProgress(
+          0.6,
+          `Applying ${todoEntries.length} commit(s) with interactive rebase...`,
+        );
+
+        try {
+          await this._execGit(context, ['rebase', '-i', '--', ontoSha], {
+            env: this._interactiveRebaseEnv(session),
+          });
+        } catch (error: unknown) {
+          const rebaseState = await this._readRebaseState(context.repository, context.signal);
+          if (rebaseState.inProgress) {
+            throw new AppError(
+              AppErrorCode.GIT_COMMAND_FAILED,
+              `Interactive rebase stopped with conflicts in ${rebaseState.unmergedFiles.length} file(s). Resolve conflicts, then continue, abort, or skip the rebase.`,
+              { rebaseState, onto, currentBranch: head.currentBranch },
+            );
+          }
+          this._cleanupInteractiveRebaseSession(context.repository.id);
+          throw error;
+        }
+
+        const rebaseState = await this._readRebaseState(context.repository, context.signal);
+        if (!rebaseState.inProgress) {
+          this._cleanupInteractiveRebaseSession(context.repository.id);
+        }
+
+        return {
+          onto,
+          ontoSha,
+          currentBranch: head.currentBranch,
+          ...(upstream ? { upstream } : {}),
+          plan: todoEntries,
+          rebaseState,
+        };
+      },
+    });
+  }
+
   public continueRebase(
     options: RebaseActionOperationOptions,
   ): Promise<OperationExecutionResult<RebaseActionOperationData>> {
@@ -1677,6 +1992,7 @@ export class GitOperationService implements vscode.Disposable {
   ): Promise<OperationExecutionResult<FetchOperationData>> {
     const prune = options.prune ?? true;
     const remote = options.remote?.trim();
+    const all = Boolean(options.all) || !remote;
 
     return this.runOperation<FetchOperationData>({
       operationId: options.operationId,
@@ -1696,7 +2012,7 @@ export class GitOperationService implements vscode.Disposable {
         }
 
         const args = ['fetch'];
-        if (remote) {
+        if (remote && !all) {
           args.push(remote);
         } else {
           args.push('--all');
@@ -1707,13 +2023,264 @@ export class GitOperationService implements vscode.Disposable {
 
         context.reportProgress(
           0.5,
-          remote ? `Fetching from remote '${remote}'...` : 'Fetching from all remotes...',
+          remote && !all ? `Fetching from remote '${remote}'...` : 'Fetching from all remotes...',
         );
         await this._execGit(context, args);
 
         return {
-          remote: remote || 'all',
+          remote: remote && !all ? remote : 'all',
           pruned: prune,
+        };
+      },
+    });
+  }
+
+  public pull(options: PullOperationOptions): Promise<OperationExecutionResult<PullOperationData>> {
+    const branch = options.branch?.trim();
+    const remote = options.remote?.trim() || (branch ? 'origin' : undefined);
+    const strategy = options.strategy ?? 'merge';
+    const autostash = Boolean(options.autostash);
+
+    return this.runOperation<PullOperationData>({
+      operationId: options.operationId,
+      repositoryId: options.repositoryId,
+      type: 'pull',
+      preflight: {
+        requireCleanWorktree: !autostash,
+        disallowBare: true,
+        allowDetachedHead: false,
+      },
+      execute: async (context) => {
+        if (
+          remote &&
+          // eslint-disable-next-line no-control-regex
+          (remote.startsWith('-') || /[\s\x00-\x1f\x7f]/.test(remote))
+        ) {
+          throw new AppError(AppErrorCode.GIT_COMMAND_FAILED, 'Invalid remote name.');
+        }
+        if (branch) {
+          if (branch.startsWith('-')) {
+            throw new AppError(AppErrorCode.GIT_COMMAND_FAILED, 'Invalid branch name.');
+          }
+          const validation = await this._preflight.validateRefName(
+            context.repository,
+            branch,
+            true,
+          );
+          if (!validation.valid) {
+            throw new AppError(
+              AppErrorCode.GIT_COMMAND_FAILED,
+              validation.error || 'Invalid branch name.',
+            );
+          }
+        }
+
+        const args = ['pull'];
+        if (strategy === 'rebase') {
+          args.push('--rebase');
+        } else if (strategy === 'ff-only') {
+          args.push('--ff-only');
+        }
+        if (autostash) {
+          args.push('--autostash');
+        }
+        if (remote) {
+          args.push(remote);
+        }
+        if (branch) {
+          args.push(branch);
+        }
+
+        context.reportProgress(
+          0.5,
+          remote || branch
+            ? `Pulling ${branch ? `'${branch}' ` : ''}from '${remote ?? 'upstream'}'...`
+            : 'Pulling from upstream...',
+        );
+        await this._execGit(context, args);
+
+        return {
+          remote,
+          branch,
+          strategy,
+          autostashed: autostash,
+        };
+      },
+    });
+  }
+
+  public addRemote(
+    options: AddRemoteOperationOptions,
+  ): Promise<OperationExecutionResult<RemoteOperationData>> {
+    const name = this._normalizeRemoteName(options.name);
+    const url = options.url.trim();
+    if (!url || url.startsWith('-')) {
+      throw new AppError(AppErrorCode.GIT_COMMAND_FAILED, 'A valid remote URL is required.');
+    }
+
+    return this.runOperation<RemoteOperationData>({
+      operationId: options.operationId,
+      repositoryId: options.repositoryId,
+      type: 'remote-add',
+      preflight: { disallowBare: true, allowDetachedHead: true },
+      execute: async (context) => {
+        context.reportProgress(0.5, `Adding remote '${name}'...`);
+        await this._execGit(context, ['remote', 'add', name, url]);
+        return { name };
+      },
+    });
+  }
+
+  public removeRemote(
+    options: RemoveRemoteOperationOptions,
+  ): Promise<OperationExecutionResult<RemoteOperationData>> {
+    const name = this._normalizeRemoteName(options.name);
+
+    return this.runOperation<RemoteOperationData>({
+      operationId: options.operationId,
+      repositoryId: options.repositoryId,
+      type: 'remote-remove',
+      preflight: { disallowBare: true, allowDetachedHead: true },
+      execute: async (context) => {
+        context.reportProgress(0.5, `Removing remote '${name}'...`);
+        await this._execGit(context, ['remote', 'remove', name]);
+        return { name };
+      },
+    });
+  }
+
+  public renameRemote(
+    options: RenameRemoteOperationOptions,
+  ): Promise<OperationExecutionResult<RemoteOperationData>> {
+    const oldName = this._normalizeRemoteName(options.oldName);
+    const newName = this._normalizeRemoteName(options.newName);
+
+    return this.runOperation<RemoteOperationData>({
+      operationId: options.operationId,
+      repositoryId: options.repositoryId,
+      type: 'remote-rename',
+      preflight: { disallowBare: true, allowDetachedHead: true },
+      execute: async (context) => {
+        context.reportProgress(0.5, `Renaming remote '${oldName}' to '${newName}'...`);
+        await this._execGit(context, ['remote', 'rename', oldName, newName]);
+        return { name: newName };
+      },
+    });
+  }
+
+  public setRemoteUrl(
+    options: SetRemoteUrlOperationOptions,
+  ): Promise<OperationExecutionResult<RemoteOperationData>> {
+    const name = this._normalizeRemoteName(options.name);
+    const url = options.url.trim();
+    if (!url || url.startsWith('-')) {
+      throw new AppError(AppErrorCode.GIT_COMMAND_FAILED, 'A valid remote URL is required.');
+    }
+
+    return this.runOperation<RemoteOperationData>({
+      operationId: options.operationId,
+      repositoryId: options.repositoryId,
+      type: 'remote-set-url',
+      preflight: { disallowBare: true, allowDetachedHead: true },
+      execute: async (context) => {
+        context.reportProgress(0.5, `Updating URL for remote '${name}'...`);
+        const args = ['remote', 'set-url'];
+        if (options.push) {
+          args.push('--push');
+        }
+        args.push(name, url);
+        await this._execGit(context, args);
+        return { name };
+      },
+    });
+  }
+
+  public async listReflog(repositoryId: string, limit = 20): Promise<ReflogEntry[]> {
+    const repository = this._repositoryManager.getRepository(repositoryId);
+    if (!repository) {
+      throw new AppError(AppErrorCode.NOT_A_REPOSITORY, `Repository '${repositoryId}' not found.`);
+    }
+    return repository.listReflog(limit);
+  }
+
+  public async getSyncStatus(repositoryId: string): Promise<RepositorySyncStatus> {
+    const repository = this._repositoryManager.getRepository(repositoryId);
+    if (!repository) {
+      throw new AppError(AppErrorCode.NOT_A_REPOSITORY, `Repository '${repositoryId}' not found.`);
+    }
+
+    const refs = await repository.getRefs();
+    const currentBranch = refs.currentBranch;
+    if (!currentBranch) {
+      return { repositoryId, ahead: 0, behind: 0 };
+    }
+
+    const localBranch = refs.localBranches.find((branch) => branch.name === currentBranch);
+    const upstream = localBranch?.upstream;
+    if (!upstream) {
+      return { repositoryId, currentBranch, ahead: 0, behind: 0 };
+    }
+
+    const result = await repository.exec([
+      'rev-list',
+      '--left-right',
+      '--count',
+      `${currentBranch}...${upstream}`,
+    ]);
+    if (result.exitCode !== 0) {
+      return { repositoryId, currentBranch, upstream, ahead: 0, behind: 0 };
+    }
+
+    const [aheadRaw = '0', behindRaw = '0'] = result.stdout.trim().split(/\s+/);
+    return {
+      repositoryId,
+      currentBranch,
+      upstream,
+      ahead: Number.parseInt(aheadRaw, 10) || 0,
+      behind: Number.parseInt(behindRaw, 10) || 0,
+    };
+  }
+
+  public async undo(
+    options: UndoOperationOptions,
+  ): Promise<OperationExecutionResult<UndoOperationData>> {
+    return this.runOperation<UndoOperationData>({
+      operationId: options.operationId,
+      repositoryId: options.repositoryId,
+      type: 'undo',
+      preflight: {
+        requireCleanWorktree: true,
+        disallowBare: true,
+        allowDetachedHead: true,
+      },
+      execute: async (context) => {
+        const entries = await context.repository.listReflog(40, context.signal);
+        const reflogIndex = options.reflogIndex ?? 1;
+        const target = options.expectedSha
+          ? entries.find((entry) => entry.sha === options.expectedSha)
+          : entries.find((entry) => entry.index === reflogIndex);
+
+        if (!target) {
+          throw new AppError(
+            AppErrorCode.GIT_COMMAND_FAILED,
+            'The previous repository state is no longer available in the reflog.',
+          );
+        }
+        if (/^0+$/.test(target.sha)) {
+          throw new AppError(
+            AppErrorCode.GIT_COMMAND_FAILED,
+            'The previous state cannot be restored because it did not exist.',
+          );
+        }
+
+        const previousHeadSha = await this._readHeadSha(context.repository, context.signal);
+        context.reportProgress(0.5, `Restoring ${target.shortSha}...`);
+        await this._execGit(context, ['reset', '--hard', target.sha]);
+
+        return {
+          targetSha: target.sha,
+          reflogIndex: target.index,
+          previousHeadSha,
         };
       },
     });
@@ -1813,6 +2380,68 @@ export class GitOperationService implements vscode.Disposable {
           all,
         });
         return { paths, all };
+      },
+    });
+  }
+
+  public addGitWorktree(
+    options: AddGitWorktreeOperationOptions,
+  ): Promise<OperationExecutionResult<AddGitWorktreeOperationData>> {
+    const worktreePath = options.path.trim();
+    const branch = options.branch?.trim();
+    const newBranch = options.newBranch?.trim();
+
+    return this.runOperation<AddGitWorktreeOperationData>({
+      operationId: options.operationId,
+      repositoryId: options.repositoryId,
+      type: 'worktree-add',
+      preflight: {
+        disallowBare: true,
+        allowDetachedHead: true,
+      },
+      execute: async (context) => {
+        if (!worktreePath) {
+          throw new AppError(AppErrorCode.GIT_COMMAND_FAILED, t('Worktree path is required.'));
+        }
+        context.reportProgress(0.5, t('Creating worktree...'));
+        await context.repository.addWorktree({
+          path: worktreePath,
+          ...(branch ? { branch } : {}),
+          ...(newBranch ? { newBranch } : {}),
+        });
+        return {
+          path: worktreePath,
+          ...(branch ? { branch } : {}),
+          ...(newBranch ? { newBranch } : {}),
+        };
+      },
+    });
+  }
+
+  public removeGitWorktree(
+    options: RemoveGitWorktreeOperationOptions,
+  ): Promise<OperationExecutionResult<RemoveGitWorktreeOperationData>> {
+    const worktreePath = options.path.trim();
+    const force = Boolean(options.force);
+
+    return this.runOperation<RemoveGitWorktreeOperationData>({
+      operationId: options.operationId,
+      repositoryId: options.repositoryId,
+      type: 'worktree-remove',
+      preflight: {
+        disallowBare: true,
+        allowDetachedHead: true,
+      },
+      execute: async (context) => {
+        if (!worktreePath) {
+          throw new AppError(AppErrorCode.GIT_COMMAND_FAILED, t('Worktree path is required.'));
+        }
+        context.reportProgress(
+          0.5,
+          force ? t('Force removing worktree...') : t('Removing worktree...'),
+        );
+        await context.repository.removeWorktree(worktreePath, force);
+        return { path: worktreePath, force };
       },
     });
   }
@@ -2064,8 +2693,11 @@ export class GitOperationService implements vscode.Disposable {
 
         context.reportProgress(0.65, progressMessage);
 
+        const session = this._interactiveRebaseSessions.get(context.repository.id);
+        const env = session && action !== 'abort' ? this._interactiveRebaseEnv(session) : undefined;
+
         try {
-          await this._execGit(context, args);
+          await this._execGit(context, args, env ? { env } : undefined);
         } catch (error: unknown) {
           const rebaseState = await this._readRebaseState(context.repository, context.signal);
           if (rebaseState.inProgress) {
@@ -2075,13 +2707,19 @@ export class GitOperationService implements vscode.Disposable {
               { rebaseState, action },
             );
           }
+          this._cleanupInteractiveRebaseSession(context.repository.id);
           throw error;
+        }
+
+        const rebaseState = await this._readRebaseState(context.repository, context.signal);
+        if (action === 'abort' || !rebaseState.inProgress) {
+          this._cleanupInteractiveRebaseSession(context.repository.id);
         }
 
         return {
           action,
           rebaseStateBeforeAction,
-          rebaseState: await this._readRebaseState(context.repository, context.signal),
+          rebaseState,
         };
       },
     });
@@ -2590,6 +3228,16 @@ export class GitOperationService implements vscode.Disposable {
       : undefined;
     const ontoSha = statePath ? await this._readGitStateFile(statePath, 'onto') : undefined;
     const unmergedFiles = statePath ? await this._readUnmergedFiles(repository, signal) : [];
+    const completedSteps = statePath
+      ? await this._countRebaseCommands(path.join(statePath, 'done'))
+      : undefined;
+    const remainingSteps = statePath
+      ? await this._countRebaseCommands(path.join(statePath, 'git-rebase-todo'))
+      : undefined;
+    const totalSteps =
+      completedSteps !== undefined && remainingSteps !== undefined
+        ? completedSteps + remainingSteps + 1
+        : undefined;
 
     return {
       inProgress: Boolean(statePath),
@@ -2597,8 +3245,22 @@ export class GitOperationService implements vscode.Disposable {
       ...(originalHeadSha ? { originalHeadSha } : {}),
       ...(ontoSha ? { ontoSha } : {}),
       ...(currentPatchSha ? { currentPatchSha } : {}),
+      ...(completedSteps !== undefined ? { completedSteps } : {}),
+      ...(totalSteps !== undefined ? { totalSteps } : {}),
       unmergedFiles,
     };
+  }
+
+  private async _countRebaseCommands(filePath: string): Promise<number | undefined> {
+    try {
+      const content = await fs.promises.readFile(filePath, 'utf8');
+      return content.split('\n').filter((line) => {
+        const trimmed = line.trim();
+        return trimmed.length > 0 && !trimmed.startsWith('#');
+      }).length;
+    } catch {
+      return undefined;
+    }
   }
 
   private async _readSequencerOperationState(
@@ -2691,9 +3353,125 @@ export class GitOperationService implements vscode.Disposable {
     }
   }
 
-  private async _execGit(context: OperationContext, args: readonly string[]): Promise<GitResult> {
+  private async _createInteractiveRebaseSession(
+    repository: GitRepository,
+    entries: readonly RebasePlanEntry[],
+    signal: AbortSignal,
+  ): Promise<InteractiveRebaseSession> {
+    const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'git-graph-rebase-'));
+    const stateDir = await this._resolveGitPath(repository, 'rebase-merge', signal);
+    const messagesDir = path.join(tempDir, 'messages');
+    await fs.promises.mkdir(messagesDir, { recursive: true });
+
+    for (const entry of entries) {
+      if (entry.action !== 'reword') {
+        continue;
+      }
+      const message = entry.message?.trim() ? entry.message : entry.subject;
+      const normalized = message.endsWith('\n') ? message : `${message}\n`;
+      await fs.promises.writeFile(path.join(messagesDir, `${entry.sha}.txt`), normalized, 'utf8');
+    }
+
+    await fs.promises.writeFile(
+      path.join(tempDir, 'todo'),
+      RebasePlanQuery.formatTodo(entries),
+      'utf8',
+    );
+
+    const sequenceEditorPath = path.join(tempDir, 'sequence-editor.cjs');
+    await fs.promises.writeFile(sequenceEditorPath, this._sequenceEditorScript(), 'utf8');
+
+    const messageEditorPath = path.join(tempDir, 'message-editor.cjs');
+    await fs.promises.writeFile(
+      messageEditorPath,
+      this._messageEditorScript(stateDir, messagesDir),
+      'utf8',
+    );
+
+    return { tempDir, sequenceEditorPath, messageEditorPath };
+  }
+
+  private _sequenceEditorScript(): string {
+    return `const fs = require('fs');
+const path = require('path');
+const target = process.argv[2];
+const base = __dirname;
+const marker = path.join(base, 'sequence-applied');
+try {
+  if (fs.existsSync(marker)) {
+    process.exit(0);
+  }
+  fs.copyFileSync(path.join(base, 'todo'), target);
+  fs.writeFileSync(marker, '1');
+  process.exit(0);
+} catch (error) {
+  process.stderr.write(String(error));
+  process.exit(1);
+}
+`;
+  }
+
+  private _messageEditorScript(stateDir: string, messagesDir: string): string {
+    return `const fs = require('fs');
+const path = require('path');
+const target = process.argv[2];
+const config = ${JSON.stringify({ stateDir, messagesDir })};
+if (!target) {
+  process.exit(0);
+}
+let done = '';
+try {
+  done = fs.readFileSync(path.join(config.stateDir, 'done'), 'utf8');
+} catch {
+  process.exit(0);
+}
+const lines = done
+  .split('\\n')
+  .map((line) => line.trim())
+  .filter((line) => line.length > 0 && !line.startsWith('#'));
+const last = lines.length > 0 ? lines[lines.length - 1] : '';
+const parts = last.split(/\\s+/);
+const action = parts[0];
+const sha = parts[1];
+if (action === 'reword' && sha) {
+  const messagePath = path.join(config.messagesDir, sha + '.txt');
+  if (fs.existsSync(messagePath)) {
+    fs.writeFileSync(target, fs.readFileSync(messagePath, 'utf8'));
+  }
+}
+process.exit(0);
+`;
+  }
+
+  private _interactiveRebaseEnv(session: InteractiveRebaseSession): Record<string, string> {
+    const execPath = process.execPath;
+    return {
+      GIT_SEQUENCE_EDITOR: `"${execPath}" "${session.sequenceEditorPath}"`,
+      GIT_EDITOR: `"${execPath}" "${session.messageEditorPath}"`,
+      GIT_TERMINAL_PROMPT: '0',
+      ELECTRON_RUN_AS_NODE: '1',
+    };
+  }
+
+  private _cleanupInteractiveRebaseSession(repositoryId: string): void {
+    const session = this._interactiveRebaseSessions.get(repositoryId);
+    if (!session) {
+      return;
+    }
+    this._interactiveRebaseSessions.delete(repositoryId);
+    void fs.promises.rm(session.tempDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+
+  private async _execGit(
+    context: OperationContext,
+    args: readonly string[],
+    options?: { env?: Record<string, string | undefined> },
+  ): Promise<GitResult> {
     context.logCommand('git', args);
-    const result = await context.repository.exec(args, { signal: context.signal });
+    const result = await context.repository.exec(args, {
+      signal: context.signal,
+      ...(options?.env ? { env: options.env } : {}),
+    });
     if (result.exitCode !== 0) {
       throw new GitCommandError(result.stderr || `git ${args[0] ?? ''} failed`, {
         command: 'git',
@@ -2729,6 +3507,33 @@ export class GitOperationService implements vscode.Disposable {
 
   private _shortRemoteBranchName(fullRef: string): string {
     return fullRef.replace(/^refs\/remotes\//, '');
+  }
+
+  private _normalizeRemoteName(rawName: string): string {
+    const name = rawName.trim();
+    if (!name || !/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(name)) {
+      throw new AppError(
+        AppErrorCode.GIT_COMMAND_FAILED,
+        `'${rawName}' is not a valid remote name.`,
+      );
+    }
+    return name;
+  }
+
+  private async _readHeadSha(
+    repository: GitRepository,
+    signal?: AbortSignal,
+  ): Promise<string | undefined> {
+    try {
+      const result = await repository.exec(['rev-parse', '--verify', 'HEAD'], { signal });
+      if (result.exitCode !== 0) {
+        return undefined;
+      }
+      const sha = result.stdout.trim();
+      return sha || undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private async _resolveExclusiveBranchCommits(

@@ -18,6 +18,8 @@ import {
   type DiffResult,
   WorktreeStatusSchema,
   StashEntrySchema,
+  RebasePlanEntrySchema,
+  validateRebasePlan,
 } from '../src/index';
 
 describe('Domain Models and Schemas', () => {
@@ -317,5 +319,78 @@ describe('Worktree & Stash domain schemas', () => {
     };
     expect(StashEntrySchema.safeParse(entry).success).toBe(true);
     expect(StashEntrySchema.safeParse({ ...entry, index: -1 }).success).toBe(false);
+  });
+
+  it('validates RebasePlanEntry and rejects non-hexadecimal SHAs', () => {
+    const entry = {
+      action: 'pick',
+      sha: 'a'.repeat(40),
+      shortSha: 'aaaaaaa',
+      subject: 'feat: initial',
+      author: 'Ada',
+      date: 1700000000,
+    };
+
+    expect(RebasePlanEntrySchema.safeParse(entry).success).toBe(true);
+    expect(RebasePlanEntrySchema.safeParse({ ...entry, action: 'explode' }).success).toBe(false);
+    expect(RebasePlanEntrySchema.safeParse({ ...entry, sha: 'xyz123' }).success).toBe(false);
+    expect(
+      RebasePlanEntrySchema.safeParse({ ...entry, action: 'reword', message: 'new' }).success,
+    ).toBe(true);
+  });
+
+  it('validates rebase plans in execution order', () => {
+    const pick = {
+      action: 'pick' as const,
+      sha: 'a'.repeat(40),
+      shortSha: 'aaaaaaa',
+      subject: 'first',
+      author: 'Ada',
+      date: 0,
+    };
+    const squash = {
+      ...pick,
+      action: 'squash' as const,
+      sha: 'b'.repeat(40),
+      shortSha: 'bbbbbbb',
+      subject: 'second',
+    };
+
+    expect(validateRebasePlan([pick, squash])).toEqual({ valid: true });
+    expect(validateRebasePlan([])).toEqual({
+      valid: false,
+      error: 'The rebase plan is empty.',
+    });
+    expect(validateRebasePlan([squash, pick])).toEqual({
+      valid: false,
+      error: 'The first applied commit cannot be squashed or fixed up.',
+    });
+    expect(validateRebasePlan([pick, { ...pick }])).toEqual({
+      valid: false,
+      error: 'Commit aaaaaaa appears more than once.',
+    });
+
+    const reword = {
+      ...pick,
+      action: 'reword' as const,
+      sha: 'c'.repeat(40),
+      shortSha: 'ccccccc',
+      message: '   ',
+    };
+    expect(validateRebasePlan([pick, reword])).toEqual({
+      valid: false,
+      error: 'Commit ccccccc needs a message before it can be reworded.',
+    });
+    expect(validateRebasePlan([pick, { ...reword, message: 'new message' }])).toEqual({
+      valid: true,
+    });
+
+    const drop = {
+      ...pick,
+      action: 'drop' as const,
+      sha: 'd'.repeat(40),
+      shortSha: 'ddddddd',
+    };
+    expect(validateRebasePlan([drop, pick, squash])).toEqual({ valid: true });
   });
 });

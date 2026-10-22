@@ -1,0 +1,8 @@
+{
+  "Creating worktree...": "Creating worktree...",
+  "Removing worktree...": "Removing worktree...",
+  "Force removing worktree...": "Force removing worktree...",
+  "Failed to list worktrees: {0}": "Failed to list worktrees: {0}",
+  "Failed to list submodules: {0}": "Failed to list submodules: {0}",
+  "Worktree path is required.": "Worktree path is required."
+}

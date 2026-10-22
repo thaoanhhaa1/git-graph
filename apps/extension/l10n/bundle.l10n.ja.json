@@ -1,0 +1,8 @@
+{
+  "Creating worktree...": "ワークツリーを作成しています...",
+  "Removing worktree...": "ワークツリーを削除しています...",
+  "Force removing worktree...": "ワークツリーを強制削除しています...",
+  "Failed to list worktrees: {0}": "ワークツリーを一覧表示できませんでした: {0}",
+  "Failed to list submodules: {0}": "サブモジュールを一覧表示できませんでした: {0}",
+  "Worktree path is required.": "ワークツリーのパスが必要です。"
+}

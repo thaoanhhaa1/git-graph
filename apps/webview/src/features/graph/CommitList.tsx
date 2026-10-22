@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import { CommitRow, type CommitItem } from './CommitRow';
 import { GraphContinuation } from './GraphContinuation';
+import { GraphMinimap } from './GraphMinimap';
 import type { RefBadgeItem } from '../refs/RefBadge';
 import { getGraphWidth, DEFAULT_LANE_WIDTH, DEFAULT_ROW_HEIGHT } from './graphGeometry';
 import { useConfigStore } from '../../stores/configStore';
@@ -47,6 +48,15 @@ export interface CommitListProps {
   showTags?: boolean;
   dateType?: 'default' | 'relative' | 'absolute';
   onCheckoutRef?: (ref: RefBadgeItem) => void;
+  draggableRefs?: boolean;
+  onRefDragStart?: (ref: RefBadgeItem, e: React.DragEvent<HTMLSpanElement>) => void;
+  onRefDragEnd?: (ref: RefBadgeItem, e: React.DragEvent<HTMLSpanElement>) => void;
+  onRefTouchStart?: (ref: RefBadgeItem, e: React.TouchEvent<HTMLSpanElement>) => void;
+  dropTargetSha?: string | null;
+  onDragOverCommit?: (sha: string, e: React.DragEvent<HTMLTableRowElement>) => void;
+  onDragLeaveCommit?: (sha: string, e: React.DragEvent<HTMLTableRowElement>) => void;
+  onDropCommit?: (sha: string, e: React.DragEvent<HTMLTableRowElement>) => void;
+  worktreeBranches?: ReadonlyMap<string, string>;
 }
 
 export { DEFAULT_ROW_HEIGHT };
@@ -81,6 +91,15 @@ export const CommitList: React.FC<CommitListProps> = ({
   showRemoteBranches,
   showTags,
   dateType,
+  draggableRefs,
+  onRefDragStart,
+  onRefDragEnd,
+  onRefTouchStart,
+  dropTargetSha,
+  onDragOverCommit,
+  onDragLeaveCommit,
+  onDropCommit,
+  worktreeBranches,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -96,6 +115,13 @@ export const CommitList: React.FC<CommitListProps> = ({
   });
   const columnWidthsRef = useRef(columnWidths);
   columnWidthsRef.current = columnWidths;
+
+  const columnWidthsResetToken = useConfigStore((s) => s.columnWidthsResetToken);
+  useEffect(() => {
+    setColumnWidths(loadPersistedState()?.columnWidths ?? {});
+  }, [columnWidthsResetToken]);
+
+  const showMinimap = useConfigStore((s) => s.config.showMinimap);
 
   const resizingColumnRef = useRef<{
     column: keyof ColumnWidths;
@@ -196,6 +222,8 @@ export const CommitList: React.FC<CommitListProps> = ({
 
   const hasBootstrapped = useRepositoryStore((s) => s.hasBootstrapped);
   const isLoading = useGraphStore((s) => s.isLoading);
+  const revealCommitSha = useGraphStore((s) => s.revealCommitSha);
+  const setRevealCommitSha = useGraphStore((s) => s.setRevealCommitSha);
 
   // Search matches from store
   const searchMatches = useGraphStore((s) => s.searchMatches);
@@ -387,6 +415,15 @@ export const CommitList: React.FC<CommitListProps> = ({
     [commits.length, rowHeight, viewportHeight],
   );
 
+  // Reveal a commit targeted from outside the webview (blame, line history, commands)
+  useEffect(() => {
+    if (!revealCommitSha) return;
+    const revealIndex = findCommitIndex(revealCommitSha);
+    if (revealIndex < 0) return;
+    scrollToCommitIndex(revealIndex);
+    setRevealCommitSha(null);
+  }, [revealCommitSha, findCommitIndex, scrollToCommitIndex, setRevealCommitSha]);
+
   // Accessible keyboard navigation across commits
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -544,367 +581,409 @@ export const CommitList: React.FC<CommitListProps> = ({
     return getGraphWidth(maxGraphLane, DEFAULT_LANE_WIDTH);
   }, [maxGraphLane]);
 
+  const handleMinimapScroll = useCallback((nextScrollTop: number) => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = nextScrollTop;
+    }
+  }, []);
+
   return (
-    <div
-      className="commit-table-container"
-      ref={containerRef}
-      onScroll={handleScroll}
-      onKeyDown={handleKeyDown}
-      tabIndex={0}
-      data-testid="commit-table-container"
-      role="region"
-      aria-label={tableAriaLabel}
-    >
-      <table className="commit-table" aria-label={tableAriaLabel} role="grid">
-        <thead>
-          <tr role="row">
-            <th
-              role="columnheader"
-              className="commit-col-graph"
-              style={{
-                width: columnWidths.graph ?? graphColWidth,
-                minWidth: columnWidths.graph ?? graphColWidth,
-                textAlign: 'left',
-                position: 'relative',
-              }}
-            >
-              Graph
-              <div
-                className="column-resize-handle"
-                data-testid="resize-handle-graph"
-                aria-label="Resize Graph Column"
-                onMouseDown={(e) => handleResizeStart('graph', e)}
-              />
-            </th>
-            <th
-              role="columnheader"
-              className="commit-col-description"
-              style={{
-                width: columnWidths.description,
-                minWidth: columnWidths.description ?? 0,
-                position: 'relative',
-              }}
-            >
-              Description
-              <div
-                className="column-resize-handle"
-                data-testid="resize-handle-description"
-                aria-label="Resize Description Column"
-                onMouseDown={(e) => handleResizeStart('description', e)}
-              />
-            </th>
-            {effectiveShowDate && (
+    <div className="commit-list-layout">
+      <div
+        id="commit-table-container"
+        className="commit-table-container"
+        ref={containerRef}
+        onScroll={handleScroll}
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
+        data-testid="commit-table-container"
+        role="region"
+        aria-label={tableAriaLabel}
+        aria-describedby="commit-graph-summary"
+      >
+        <p id="commit-graph-summary" className="sr-only" data-testid="commit-graph-summary">
+          {`Showing ${commits.length} commits across ${maxGraphLane + 1} graph ${
+            maxGraphLane === 0 ? 'lane' : 'lanes'
+          }. Use arrow keys to move between commits, Enter to view details.`}
+        </p>
+        <table className="commit-table" aria-label={tableAriaLabel} role="grid">
+          <thead>
+            <tr role="row">
               <th
                 role="columnheader"
-                className="commit-col-date"
+                className="commit-col-graph"
                 style={{
-                  width: columnWidths.date ?? 130,
-                  minWidth: columnWidths.date ?? 130,
+                  width: columnWidths.graph ?? graphColWidth,
+                  minWidth: columnWidths.graph ?? graphColWidth,
+                  textAlign: 'left',
                   position: 'relative',
                 }}
               >
-                Date
+                Graph
                 <div
                   className="column-resize-handle"
-                  data-testid="resize-handle-date"
-                  aria-label="Resize Date Column"
-                  onMouseDown={(e) => handleResizeStart('date', e)}
+                  data-testid="resize-handle-graph"
+                  aria-label="Resize Graph Column"
+                  onMouseDown={(e) => handleResizeStart('graph', e)}
                 />
               </th>
-            )}
-            {effectiveShowAuthor && (
               <th
                 role="columnheader"
-                className="commit-col-author"
+                className="commit-col-description"
                 style={{
-                  width: columnWidths.author ?? 120,
-                  minWidth: columnWidths.author ?? 120,
+                  width: columnWidths.description,
+                  minWidth: columnWidths.description ?? 0,
                   position: 'relative',
                 }}
               >
-                Author
+                Description
                 <div
                   className="column-resize-handle"
-                  data-testid="resize-handle-author"
-                  aria-label="Resize Author Column"
-                  onMouseDown={(e) => handleResizeStart('author', e)}
+                  data-testid="resize-handle-description"
+                  aria-label="Resize Description Column"
+                  onMouseDown={(e) => handleResizeStart('description', e)}
                 />
               </th>
-            )}
-            <th
-              role="columnheader"
-              className="commit-col-commit"
-              style={{
-                width: columnWidths.commit ?? 90,
-                minWidth: columnWidths.commit ?? 90,
-                position: 'relative',
-              }}
-            >
-              Commit
-              <div
-                className="column-resize-handle"
-                data-testid="resize-handle-commit"
-                aria-label="Resize Commit Column"
-                onMouseDown={(e) => handleResizeStart('commit', e)}
-              />
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {commits.length === 0 ? (
-            isLoading || !hasBootstrapped ? (
-              Array.from({ length: 8 }).map((_, idx) => (
-                <tr
-                  key={`skeleton-${idx}`}
-                  className="commit-row commit-skeleton-row"
-                  aria-hidden="true"
-                  data-testid="commit-skeleton-row"
+              {effectiveShowDate && (
+                <th
+                  role="columnheader"
+                  className="commit-col-date"
+                  style={{
+                    width: columnWidths.date ?? 130,
+                    minWidth: columnWidths.date ?? 130,
+                    position: 'relative',
+                  }}
                 >
-                  <td
-                    className="commit-cell commit-cell-graph"
-                    style={{
-                      width: columnWidths.graph ?? graphColWidth,
-                      minWidth: columnWidths.graph ?? graphColWidth,
-                    }}
+                  Date
+                  <div
+                    className="column-resize-handle"
+                    data-testid="resize-handle-date"
+                    aria-label="Resize Date Column"
+                    onMouseDown={(e) => handleResizeStart('date', e)}
+                  />
+                </th>
+              )}
+              {effectiveShowAuthor && (
+                <th
+                  role="columnheader"
+                  className="commit-col-author"
+                  style={{
+                    width: columnWidths.author ?? 120,
+                    minWidth: columnWidths.author ?? 120,
+                    position: 'relative',
+                  }}
+                >
+                  Author
+                  <div
+                    className="column-resize-handle"
+                    data-testid="resize-handle-author"
+                    aria-label="Resize Author Column"
+                    onMouseDown={(e) => handleResizeStart('author', e)}
+                  />
+                </th>
+              )}
+              <th
+                role="columnheader"
+                className="commit-col-commit"
+                style={{
+                  width: columnWidths.commit ?? 90,
+                  minWidth: columnWidths.commit ?? 90,
+                  position: 'relative',
+                }}
+              >
+                Commit
+                <div
+                  className="column-resize-handle"
+                  data-testid="resize-handle-commit"
+                  aria-label="Resize Commit Column"
+                  onMouseDown={(e) => handleResizeStart('commit', e)}
+                />
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {commits.length === 0 ? (
+              isLoading || !hasBootstrapped ? (
+                Array.from({ length: 8 }).map((_, idx) => (
+                  <tr
+                    key={`skeleton-${idx}`}
+                    className="commit-row commit-skeleton-row"
+                    aria-hidden="true"
+                    data-testid="commit-skeleton-row"
                   >
-                    <div
-                      className="commit-skeleton-item"
-                      style={{ width: 12, height: 12, borderRadius: '50%', marginLeft: 10 }}
-                    />
-                  </td>
-                  <td
-                    className="commit-cell"
-                    style={
-                      columnWidths.description
-                        ? {
-                            width: columnWidths.description,
-                            minWidth: columnWidths.description,
-                          }
-                        : undefined
-                    }
-                  >
-                    <div
-                      className="commit-skeleton-item"
-                      style={{ width: `${Math.max(30, Math.sin(idx + 1) * 30 + 55)}%` }}
-                    />
-                  </td>
-                  {effectiveShowDate && (
                     <td
-                      className="commit-cell commit-cell-date"
+                      className="commit-cell commit-cell-graph"
                       style={{
-                        width: columnWidths.date ?? 130,
-                        minWidth: columnWidths.date ?? 130,
+                        width: columnWidths.graph ?? graphColWidth,
+                        minWidth: columnWidths.graph ?? graphColWidth,
                       }}
                     >
-                      <div className="commit-skeleton-item" style={{ width: 75 }} />
+                      <div
+                        className="commit-skeleton-item"
+                        style={{ width: 12, height: 12, borderRadius: '50%', marginLeft: 10 }}
+                      />
                     </td>
-                  )}
-                  {effectiveShowAuthor && (
                     <td
-                      className="commit-cell commit-cell-author"
+                      className="commit-cell"
+                      style={
+                        columnWidths.description
+                          ? {
+                              width: columnWidths.description,
+                              minWidth: columnWidths.description,
+                            }
+                          : undefined
+                      }
+                    >
+                      <div
+                        className="commit-skeleton-item"
+                        style={{ width: `${Math.max(30, Math.sin(idx + 1) * 30 + 55)}%` }}
+                      />
+                    </td>
+                    {effectiveShowDate && (
+                      <td
+                        className="commit-cell commit-cell-date"
+                        style={{
+                          width: columnWidths.date ?? 130,
+                          minWidth: columnWidths.date ?? 130,
+                        }}
+                      >
+                        <div className="commit-skeleton-item" style={{ width: 75 }} />
+                      </td>
+                    )}
+                    {effectiveShowAuthor && (
+                      <td
+                        className="commit-cell commit-cell-author"
+                        style={{
+                          width: columnWidths.author ?? 120,
+                          minWidth: columnWidths.author ?? 120,
+                        }}
+                      >
+                        <div className="commit-skeleton-item" style={{ width: 70 }} />
+                      </td>
+                    )}
+                    <td
+                      className="commit-cell commit-cell-hash"
                       style={{
-                        width: columnWidths.author ?? 120,
-                        minWidth: columnWidths.author ?? 120,
+                        width: columnWidths.commit ?? 90,
+                        minWidth: columnWidths.commit ?? 90,
                       }}
                     >
-                      <div className="commit-skeleton-item" style={{ width: 70 }} />
+                      <div className="commit-skeleton-item" style={{ width: 55 }} />
                     </td>
-                  )}
+                  </tr>
+                ))
+              ) : (
+                <tr className="commit-empty-row" data-testid="commit-empty-row">
                   <td
-                    className="commit-cell commit-cell-hash"
+                    colSpan={totalColumns}
                     style={{
-                      width: columnWidths.commit ?? 90,
-                      minWidth: columnWidths.commit ?? 90,
+                      textAlign: 'center',
+                      padding: '24px',
+                      color: 'var(--color-fg-muted)',
+                      fontSize: 'var(--font-size-sm)',
                     }}
                   >
-                    <div className="commit-skeleton-item" style={{ width: 55 }} />
+                    No commits found in this repository.
                   </td>
                 </tr>
-              ))
+              )
             ) : (
-              <tr className="commit-empty-row" data-testid="commit-empty-row">
+              <>
+                {/* Top Virtual Spacer Row */}
+                {topSpacerHeight > 0 && (
+                  <tr
+                    className="commit-spacer-row commit-spacer-top"
+                    style={{ height: `${topSpacerHeight}px` }}
+                    aria-hidden="true"
+                    data-testid="commit-spacer-top"
+                  >
+                    <td colSpan={totalColumns} style={{ padding: 0, border: 'none' }} />
+                  </tr>
+                )}
+
+                {/* Visible Commit Rows — Keyed by repository context + commit SHA */}
+                {visibleCommits.map((commit, index) => {
+                  const actualIndex = startIndex + index;
+                  const previousCommit = actualIndex > 0 ? commits[actualIndex - 1] : undefined;
+                  const previousGraphRow = previousCommit?.graphRow;
+                  const isSelected =
+                    selectedCommitSha === commit.shortHash || selectedCommitSha === commit.hash;
+                  const isSecondarySelected =
+                    Boolean(effectiveSecondarySha) &&
+                    (effectiveSecondarySha === commit.shortHash ||
+                      effectiveSecondarySha === commit.hash);
+                  const isTabCandidate = actualIndex === (selectedIndex >= 0 ? selectedIndex : 0);
+                  const itemKey = `${repositoryId ?? 'repo'}:${commit.hash}`;
+
+                  const isMatched =
+                    matchedShaSet.has(commit.hash) || matchedShaSet.has(commit.shortHash);
+                  const isCurrentMatch =
+                    currentMatchSha === commit.hash || currentMatchSha === commit.shortHash;
+
+                  const showInlineDetails =
+                    isDetailPanelOpen &&
+                    (isSelected ||
+                      (selectedCommitSha &&
+                        (commit.hash.startsWith(selectedCommitSha) ||
+                          selectedCommitSha.startsWith(commit.shortHash))));
+
+                  return (
+                    <React.Fragment key={itemKey}>
+                      <CommitRow
+                        commit={commit}
+                        isSelected={isSelected}
+                        isSecondarySelected={isSecondarySelected}
+                        onSelect={onSelectCommit}
+                        onOpenDetail={onOpenDetail}
+                        onToggleDetail={handleToggleDetail}
+                        onOpenDiffFirstFile={handleOpenDiffFirstFile}
+                        onContextMenu={onContextMenu}
+                        tabIndex={isTabCandidate ? 0 : -1}
+                        repositoryId={repositoryId}
+                        rowHeight={rowHeight}
+                        previousGraphRow={previousGraphRow}
+                        maxGraphLane={maxGraphLane}
+                        graphColWidth={columnWidths.graph ?? graphColWidth}
+                        descriptionColWidth={columnWidths.description}
+                        dateColWidth={columnWidths.date ?? 130}
+                        authorColWidth={columnWidths.author ?? 120}
+                        commitColWidth={columnWidths.commit ?? 90}
+                        showAuthor={effectiveShowAuthor}
+                        showDate={effectiveShowDate}
+                        showRemoteBranches={effectiveShowRemoteBranches}
+                        showTags={effectiveShowTags}
+                        dateType={effectiveDateType}
+                        now={now}
+                        isMatched={isMatched}
+                        isCurrentMatch={isCurrentMatch}
+                        onCheckoutRef={onCheckoutRef}
+                        draggableRefs={draggableRefs}
+                        onRefDragStart={onRefDragStart}
+                        onRefDragEnd={onRefDragEnd}
+                        onRefTouchStart={onRefTouchStart}
+                        isDropTarget={
+                          dropTargetSha === commit.hash || dropTargetSha === commit.shortHash
+                        }
+                        onDragOverCommit={onDragOverCommit}
+                        onDragLeaveCommit={onDragLeaveCommit}
+                        onDropCommit={onDropCommit}
+                        worktreeBranches={worktreeBranches}
+                      />
+                      {showInlineDetails && (
+                        <tr
+                          className="commit-details-inline-row"
+                          key={`${itemKey}-details-row`}
+                          data-testid="commit-details-inline-row"
+                        >
+                          <td
+                            className="commit-cell commit-cell-graph commit-details-graph-cell"
+                            style={{
+                              width: columnWidths.graph ?? graphColWidth,
+                              minWidth: columnWidths.graph ?? graphColWidth,
+                              maxWidth: columnWidths.graph ?? graphColWidth,
+                              padding: 0,
+                              verticalAlign: 'top',
+                              position: 'relative',
+                            }}
+                          >
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                bottom: 0,
+                                left: 0,
+                                right: 0,
+                                width: `${columnWidths.graph ?? graphColWidth}px`,
+                                overflow: 'hidden',
+                              }}
+                            >
+                              <svg
+                                className="graph-cell-svg graph-details-continuation-svg"
+                                width={columnWidths.graph ?? graphColWidth}
+                                height="100%"
+                                style={{
+                                  display: 'block',
+                                  width: `${columnWidths.graph ?? graphColWidth}px`,
+                                  height: '100%',
+                                }}
+                                role="presentation"
+                                aria-hidden="true"
+                              >
+                                {commit.graphRow ? (
+                                  <GraphContinuation row={commit.graphRow} />
+                                ) : null}
+                              </svg>
+                            </div>
+                          </td>
+                          <td
+                            colSpan={totalColumns - 1}
+                            className="commit-details-inline-cell"
+                            style={{ padding: 0, border: 'none' }}
+                          >
+                            <CommitDetailsPanel
+                              repositoryId={repositoryId}
+                              selectedSha={commit.hash}
+                              secondarySha={effectiveSecondarySha}
+                              initialFocusChanges={initialFocusChanges}
+                              onClose={onCloseDetail ?? NOOP}
+                              onSelectCommit={onSelectCommit}
+                              onStash={onStashChanges}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+
+                {/* Bottom Virtual Spacer Row */}
+                {bottomSpacerHeight > 0 && (
+                  <tr
+                    className="commit-spacer-row commit-spacer-bottom"
+                    style={{ height: `${bottomSpacerHeight}px` }}
+                    aria-hidden="true"
+                    data-testid="commit-spacer-bottom"
+                  >
+                    <td colSpan={totalColumns} style={{ padding: 0, border: 'none' }} />
+                  </tr>
+                )}
+              </>
+            )}
+
+            {/* Loading more indicator row */}
+            {isLoadingMore && (
+              <tr
+                className="commit-loading-row"
+                data-testid="commit-loading-row"
+                aria-live="polite"
+              >
                 <td
                   colSpan={totalColumns}
                   style={{
                     textAlign: 'center',
-                    padding: '24px',
+                    padding: '8px',
                     color: 'var(--color-fg-muted)',
                     fontSize: 'var(--font-size-sm)',
                   }}
                 >
-                  No commits found in this repository.
+                  <span className="loading-spinner" style={{ marginRight: 8 }} />
+                  Loading more commits...
                 </td>
               </tr>
-            )
-          ) : (
-            <>
-              {/* Top Virtual Spacer Row */}
-              {topSpacerHeight > 0 && (
-                <tr
-                  className="commit-spacer-row commit-spacer-top"
-                  style={{ height: `${topSpacerHeight}px` }}
-                  aria-hidden="true"
-                  data-testid="commit-spacer-top"
-                >
-                  <td colSpan={totalColumns} style={{ padding: 0, border: 'none' }} />
-                </tr>
-              )}
-
-              {/* Visible Commit Rows — Keyed by repository context + commit SHA */}
-              {visibleCommits.map((commit, index) => {
-                const actualIndex = startIndex + index;
-                const previousCommit = actualIndex > 0 ? commits[actualIndex - 1] : undefined;
-                const previousGraphRow = previousCommit?.graphRow;
-                const isSelected =
-                  selectedCommitSha === commit.shortHash || selectedCommitSha === commit.hash;
-                const isSecondarySelected =
-                  Boolean(effectiveSecondarySha) &&
-                  (effectiveSecondarySha === commit.shortHash ||
-                    effectiveSecondarySha === commit.hash);
-                const isTabCandidate = actualIndex === (selectedIndex >= 0 ? selectedIndex : 0);
-                const itemKey = `${repositoryId ?? 'repo'}:${commit.hash}`;
-
-                const isMatched =
-                  matchedShaSet.has(commit.hash) || matchedShaSet.has(commit.shortHash);
-                const isCurrentMatch =
-                  currentMatchSha === commit.hash || currentMatchSha === commit.shortHash;
-
-                const showInlineDetails =
-                  isDetailPanelOpen &&
-                  (isSelected ||
-                    (selectedCommitSha &&
-                      (commit.hash.startsWith(selectedCommitSha) ||
-                        selectedCommitSha.startsWith(commit.shortHash))));
-
-                return (
-                  <React.Fragment key={itemKey}>
-                    <CommitRow
-                      commit={commit}
-                      isSelected={isSelected}
-                      isSecondarySelected={isSecondarySelected}
-                      onSelect={onSelectCommit}
-                      onOpenDetail={onOpenDetail}
-                      onToggleDetail={handleToggleDetail}
-                      onOpenDiffFirstFile={handleOpenDiffFirstFile}
-                      onContextMenu={onContextMenu}
-                      tabIndex={isTabCandidate ? 0 : -1}
-                      repositoryId={repositoryId}
-                      rowHeight={rowHeight}
-                      previousGraphRow={previousGraphRow}
-                      maxGraphLane={maxGraphLane}
-                      graphColWidth={columnWidths.graph ?? graphColWidth}
-                      descriptionColWidth={columnWidths.description}
-                      dateColWidth={columnWidths.date ?? 130}
-                      authorColWidth={columnWidths.author ?? 120}
-                      commitColWidth={columnWidths.commit ?? 90}
-                      showAuthor={effectiveShowAuthor}
-                      showDate={effectiveShowDate}
-                      showRemoteBranches={effectiveShowRemoteBranches}
-                      showTags={effectiveShowTags}
-                      dateType={effectiveDateType}
-                      now={now}
-                      isMatched={isMatched}
-                      isCurrentMatch={isCurrentMatch}
-                      onCheckoutRef={onCheckoutRef}
-                    />
-                    {showInlineDetails && (
-                      <tr
-                        className="commit-details-inline-row"
-                        key={`${itemKey}-details-row`}
-                        data-testid="commit-details-inline-row"
-                      >
-                        <td
-                          className="commit-cell commit-cell-graph commit-details-graph-cell"
-                          style={{
-                            width: columnWidths.graph ?? graphColWidth,
-                            minWidth: columnWidths.graph ?? graphColWidth,
-                            maxWidth: columnWidths.graph ?? graphColWidth,
-                            padding: 0,
-                            verticalAlign: 'top',
-                            position: 'relative',
-                          }}
-                        >
-                          <div
-                            style={{
-                              position: 'absolute',
-                              top: 0,
-                              bottom: 0,
-                              left: 0,
-                              right: 0,
-                              width: `${columnWidths.graph ?? graphColWidth}px`,
-                              overflow: 'hidden',
-                            }}
-                          >
-                            <svg
-                              className="graph-cell-svg graph-details-continuation-svg"
-                              width={columnWidths.graph ?? graphColWidth}
-                              height="100%"
-                              style={{
-                                display: 'block',
-                                width: `${columnWidths.graph ?? graphColWidth}px`,
-                                height: '100%',
-                              }}
-                              role="presentation"
-                              aria-hidden="true"
-                            >
-                              {commit.graphRow ? <GraphContinuation row={commit.graphRow} /> : null}
-                            </svg>
-                          </div>
-                        </td>
-                        <td
-                          colSpan={totalColumns - 1}
-                          className="commit-details-inline-cell"
-                          style={{ padding: 0, border: 'none' }}
-                        >
-                          <CommitDetailsPanel
-                            repositoryId={repositoryId}
-                            selectedSha={commit.hash}
-                            secondarySha={effectiveSecondarySha}
-                            initialFocusChanges={initialFocusChanges}
-                            onClose={onCloseDetail ?? NOOP}
-                            onSelectCommit={onSelectCommit}
-                            onStash={onStashChanges}
-                          />
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-
-              {/* Bottom Virtual Spacer Row */}
-              {bottomSpacerHeight > 0 && (
-                <tr
-                  className="commit-spacer-row commit-spacer-bottom"
-                  style={{ height: `${bottomSpacerHeight}px` }}
-                  aria-hidden="true"
-                  data-testid="commit-spacer-bottom"
-                >
-                  <td colSpan={totalColumns} style={{ padding: 0, border: 'none' }} />
-                </tr>
-              )}
-            </>
-          )}
-
-          {/* Loading more indicator row */}
-          {isLoadingMore && (
-            <tr className="commit-loading-row" data-testid="commit-loading-row" aria-live="polite">
-              <td
-                colSpan={totalColumns}
-                style={{
-                  textAlign: 'center',
-                  padding: '8px',
-                  color: 'var(--color-fg-muted)',
-                  fontSize: 'var(--font-size-sm)',
-                }}
-              >
-                <span className="loading-spinner" style={{ marginRight: 8 }} />
-                Loading more commits...
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {showMinimap && commits.length > 0 && (
+        <GraphMinimap
+          commits={commits}
+          maxGraphLane={maxGraphLane}
+          scrollTop={scrollTop}
+          viewportHeight={effectiveViewportHeight}
+          rowHeight={rowHeight}
+          onScrollTo={handleMinimapScroll}
+        />
+      )}
     </div>
   );
 };

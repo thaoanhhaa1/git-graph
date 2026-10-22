@@ -2,7 +2,8 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import type { FileChange, FileChangeStatus } from '@git-graph/shared';
 import { Icon } from '../../components/ui/Icon';
 import { MenuItemRow } from '../menu/Menu';
-import { openFileAtRevisionInVsCode } from '../../messaging/messageRouter';
+import { openFileAtRevisionInVsCode, requestOpenSubmodule } from '../../messaging/messageRouter';
+import { t } from '../../i18n';
 
 export interface ChangedFilesProps {
   repositoryId?: string;
@@ -17,6 +18,7 @@ export interface ChangedFilesProps {
   onSelectFile: (file: FileChange) => void;
   onOpenDiffInVsCode?: (filePath: string, oldPath?: string) => void;
   onOpenFileInEditor?: (filePath: string) => void;
+  onOpenSubmodule?: (submodulePath: string) => void;
 }
 
 /**
@@ -262,6 +264,16 @@ const TreeNodeItem: React.FC<TreeNodeProps> = ({
         )}
       </span>
 
+      {file.isSubmodule ? (
+        <span
+          className="file-submodule-badge"
+          data-testid={`file-submodule-${file.path}`}
+          title={t('submodule.badge')}
+        >
+          [{t('submodule.badge')}]
+        </span>
+      ) : null}
+
       {/* Hidden file path for exact full-path test assertions */}
       <span style={{ display: 'none' }} data-testid={`file-path-name-${file.path}`}>
         {file.path}
@@ -330,6 +342,7 @@ export const ChangedFiles: React.FC<ChangedFilesProps> = ({
   onSelectFile,
   onOpenDiffInVsCode,
   onOpenFileInEditor,
+  onOpenSubmodule,
 }) => {
   const [internalFilterText, setInternalFilterText] = useState('');
   const filterText = externalFilterText !== undefined ? externalFilterText : internalFilterText;
@@ -534,6 +547,16 @@ export const ChangedFiles: React.FC<ChangedFilesProps> = ({
                   )}
                 </span>
 
+                {file.isSubmodule ? (
+                  <span
+                    className="file-submodule-badge"
+                    data-testid={`file-submodule-${file.path}`}
+                    title={t('submodule.badge')}
+                  >
+                    [{t('submodule.badge')}]
+                  </span>
+                ) : null}
+
                 <span style={{ display: 'none' }} data-testid={`file-path-name-${file.path}`}>
                   {file.path}
                 </span>
@@ -609,6 +632,21 @@ export const ChangedFiles: React.FC<ChangedFilesProps> = ({
               }
             }}
           />
+          {fileContextMenu.file.isSubmodule ? (
+            <MenuItemRow
+              id="open-submodule-in-graph"
+              label={t('submodule.open')}
+              onClick={() => {
+                const file = fileContextMenu.file;
+                setFileContextMenu(null);
+                if (onOpenSubmodule) {
+                  onOpenSubmodule(file.path);
+                } else if (repositoryId) {
+                  requestOpenSubmodule({ repositoryId, path: file.path });
+                }
+              }}
+            />
+          ) : null}
           <MenuItemRow
             id="open-diff-in-editor"
             label="Open Diff in Editor"

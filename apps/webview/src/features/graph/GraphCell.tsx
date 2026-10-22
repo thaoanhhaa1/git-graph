@@ -58,6 +58,9 @@ export const GraphCell: React.FC<GraphCellProps> = React.memo(
     const shouldDrawFallbackIncoming = !previousRow && row.row > 0 && row.commit.parents.length > 0;
 
     const isMerge = row.commit.parents.length > 1;
+    const graphLabel = `Graph lane ${row.lane + 1}${isMerge ? ', merge commit' : ''}${
+      isHead ? ', HEAD' : ''
+    }`;
 
     return (
       <svg
@@ -65,8 +68,8 @@ export const GraphCell: React.FC<GraphCellProps> = React.memo(
         width={width}
         height={rowHeight}
         viewBox={`0 0 ${width} ${rowHeight}`}
-        role="presentation"
-        aria-hidden="true"
+        role="img"
+        aria-label={graphLabel}
         data-testid={`graph-cell-${row.commit.shortSha || row.commit.sha}`}
       >
         {/* 1. Outgoing and pass-through segments from current row */}

@@ -110,6 +110,7 @@ export class GitGraphStatusBar implements vscode.Disposable {
       const currentBranch = refs.currentBranch;
 
       if (!currentBranch) {
+        this._statusBarItem.command = 'gitGraph.openGraph';
         this._statusBarItem.text = '$(git-branch) Git Graph CTS';
         this._statusBarItem.tooltip = head?.target
           ? `Git Graph CTS: (${head.target.slice(0, 7)})\nClick to view Git Graph`
@@ -118,11 +119,11 @@ export class GitGraphStatusBar implements vscode.Disposable {
         return;
       }
 
-      // Check upstream tracking branch and compute ahead / behind
       const localBranch = refs.localBranches.find((b) => b.name === currentBranch);
       const upstream = localBranch?.upstream;
 
-      let aheadBehindSuffix = '';
+      let ahead = 0;
+      let behind = 0;
       if (upstream) {
         try {
           const res = await this._gitClient.exec(
@@ -131,22 +132,34 @@ export class GitGraphStatusBar implements vscode.Disposable {
           );
           if (res.exitCode === 0 && res.stdout.trim()) {
             const parts = res.stdout.trim().split(/\s+/);
-            const ahead = parseInt(parts[0] || '0', 10) || 0;
-            const behind = parseInt(parts[1] || '0', 10) || 0;
-            if (ahead > 0) {
-              aheadBehindSuffix += ` ↑${ahead}`;
-            }
-            if (behind > 0) {
-              aheadBehindSuffix += ` ↓${behind}`;
-            }
+            ahead = parseInt(parts[0] || '0', 10) || 0;
+            behind = parseInt(parts[1] || '0', 10) || 0;
           }
         } catch {
-          // Ignore rev-list error and show branch name without suffix
+          // Ignore rev-list errors
         }
       }
 
+      let aheadBehindSuffix = '';
+      if (ahead > 0) {
+        aheadBehindSuffix += ` ↑${ahead}`;
+      }
+      if (behind > 0) {
+        aheadBehindSuffix += ` ↓${behind}`;
+      }
+
+      if (behind > 0) {
+        this._statusBarItem.command = 'gitGraph.pull';
+        this._statusBarItem.tooltip = `Git Graph CTS: ${currentBranch}${aheadBehindSuffix}\nClick to pull ${behind} commit${behind === 1 ? '' : 's'}`;
+      } else if (ahead > 0) {
+        this._statusBarItem.command = 'gitGraph.push';
+        this._statusBarItem.tooltip = `Git Graph CTS: ${currentBranch}${aheadBehindSuffix}\nClick to push ${ahead} commit${ahead === 1 ? '' : 's'}`;
+      } else {
+        this._statusBarItem.command = 'gitGraph.openGraph';
+        this._statusBarItem.tooltip = `Git Graph CTS: ${currentBranch}${aheadBehindSuffix}\nClick to view Git Graph`;
+      }
+
       this._statusBarItem.text = `$(git-branch) Git Graph CTS${aheadBehindSuffix}`;
-      this._statusBarItem.tooltip = `Git Graph CTS: ${currentBranch}${aheadBehindSuffix}\nClick to view Git Graph`;
       this._statusBarItem.show();
     } catch {
       this._statusBarItem.hide();

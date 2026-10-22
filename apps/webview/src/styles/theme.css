@@ -3638,6 +3638,202 @@ body.vscode-high-contrast-light .parent-select-btn.active,
   cursor: not-allowed;
 }
 
+.interactive-rebase-dialog {
+  max-width: 780px;
+}
+
+.interactive-rebase-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--color-border, #4c566a);
+  border-radius: 6px;
+  background-color: var(--vscode-editor-background, #1e1e1e);
+}
+
+.rebase-plan-row {
+  display: grid;
+  grid-template-columns: 44px 96px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background-color: var(--vscode-list-inactiveSelectionBackground, rgba(255, 255, 255, 0.06));
+}
+
+.rebase-plan-row.is-merge {
+  border-left: 3px solid var(--vscode-charts-blue, #4c9aff);
+}
+
+.rebase-plan-row.is-dropped {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.rebase-plan-reorder {
+  display: flex;
+  flex-direction: row;
+  gap: 2px;
+}
+
+.interactive-rebase-move-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  border-radius: 3px;
+  border: 1px solid var(--color-border, #4c566a);
+  background-color: transparent;
+  color: var(--color-fg, #d8dee9);
+  cursor: pointer;
+}
+
+.interactive-rebase-move-btn:hover:not(:disabled) {
+  background-color: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.12));
+}
+
+.interactive-rebase-move-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.interactive-rebase-action-select {
+  width: 100%;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.rebase-plan-commit {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rebase-plan-sha {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11.5px;
+  color: var(--vscode-charts-yellow, #d7ba7d);
+}
+
+.rebase-plan-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
+.rebase-plan-author {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--color-fg-muted, #9da5b4);
+}
+
+.interactive-rebase-message-input {
+  grid-column: 2 / -1;
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--color-border, #4c566a);
+  background-color: var(--vscode-input-background, #2b2b2b);
+  color: var(--color-fg, #d8dee9);
+}
+
+.interactive-rebase-loading,
+.interactive-rebase-error,
+.interactive-rebase-success {
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+
+.interactive-rebase-loading {
+  background-color: var(--vscode-editorWidget-background, rgba(255, 255, 255, 0.05));
+  color: var(--color-fg-muted, #9da5b4);
+}
+
+.interactive-rebase-error,
+.interactive-rebase-validation {
+  background-color: rgba(217, 74, 74, 0.14);
+  border: 1px solid var(--vscode-errorForeground, #d94a4a);
+  color: var(--vscode-errorForeground, #d94a4a);
+}
+
+.interactive-rebase-success {
+  background-color: rgba(78, 201, 120, 0.14);
+  border: 1px solid var(--vscode-charts-green, #4ec978);
+}
+
+.interactive-rebase-paused,
+.interactive-rebase-conflict {
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  border: 1px solid var(--vscode-charts-orange, #d18616);
+  background-color: rgba(209, 134, 22, 0.12);
+}
+
+.interactive-rebase-paused p,
+.interactive-rebase-conflict p {
+  margin: 0;
+}
+
+.interactive-rebase-status-detail {
+  margin-top: 6px !important;
+  color: var(--color-fg-muted, #9da5b4);
+  font-size: 11.5px;
+}
+
+.interactive-rebase-conflicts {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  max-height: 96px;
+  overflow-y: auto;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11.5px;
+}
+
+.interactive-rebase-progress {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.interactive-rebase-progress-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background-color: var(--vscode-editorWidget-border, rgba(255, 255, 255, 0.12));
+}
+
+.interactive-rebase-progress-fill {
+  height: 100%;
+  background-color: var(--vscode-progressBar-background, #0e70c0);
+  transition: width 120ms ease-out;
+}
+
+.interactive-rebase-progress-label {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  color: var(--color-fg-muted, #9da5b4);
+}
+
+.interactive-rebase-validation {
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
 /* ==========================================================================
    Uncommitted Changes Panel
    ========================================================================== */
@@ -4246,4 +4442,931 @@ body.vscode-high-contrast-light .parent-select-btn.active,
 
 .compare-diff-section {
   flex: 1.4;
+}
+
+/* ==========================================================================
+   Remote synchronization dialogs (Fetch / Pull / Push / Manage Remotes)
+   ========================================================================== */
+.sync-dialog-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(1px);
+  padding: 16px;
+}
+
+.sync-dialog {
+  background-color: var(--color-bg-card, #232734);
+  border: 1px solid var(--color-border, #3b4252);
+  border-radius: 8px;
+  padding: 18px 24px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--color-fg, #d8dee9);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.push-dialog {
+  max-width: 480px;
+}
+
+.remote-manager-dialog {
+  max-width: 640px;
+}
+
+.sync-dialog-title {
+  font-size: 13.5px;
+  text-align: center;
+  margin: 0;
+  color: var(--color-fg, #d8dee9);
+  line-height: 1.45;
+}
+
+.sync-dialog-title em,
+.sync-dialog-title strong {
+  font-style: italic;
+  font-weight: 700;
+  color: var(--color-fg-bright, #ffffff);
+}
+
+.sync-dialog-description {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-fg-muted, #9da5b4);
+  text-align: center;
+}
+
+.sync-dialog-description strong {
+  color: var(--color-fg, #d8dee9);
+}
+
+.sync-dialog-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sync-dialog-field-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sync-dialog-field-label {
+  width: 110px;
+  flex-shrink: 0;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-fg, #d8dee9);
+}
+
+.sync-dialog-select,
+.sync-dialog-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  background-color: var(--vscode-input-background, #1b1f27);
+  border: 1px solid var(--color-border, #4c566a);
+  border-radius: 4px;
+  color: var(--color-fg, #e5e9f0);
+  padding: 6px 10px;
+  font-size: 12.5px;
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.sync-dialog-select:focus,
+.sync-dialog-input:focus {
+  border-color: var(--color-accent, #528bff);
+  box-shadow: 0 0 0 1px var(--color-accent, #528bff);
+}
+
+.sync-dialog-select:disabled,
+.sync-dialog-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sync-dialog-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sync-dialog-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--color-fg-muted, #9da5b4);
+  cursor: pointer;
+}
+
+.sync-dialog-checkbox-label:has(input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sync-dialog-checkbox {
+  accent-color: var(--vscode-button-background, #528bff);
+  margin: 0;
+}
+
+.sync-dialog-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sync-dialog-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-fg-muted, #9da5b4);
+}
+
+.sync-dialog-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sync-dialog-radio-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--color-fg, #d8dee9);
+  cursor: pointer;
+}
+
+.sync-dialog-radio-label input {
+  margin: 0;
+  accent-color: var(--vscode-button-background, #528bff);
+}
+
+.sync-dialog-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sync-dialog-progress-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background-color: var(--color-bg, #1e222b);
+  overflow: hidden;
+}
+
+.sync-dialog-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background-color: var(--vscode-progressBar-background, #528bff);
+  transition: width 0.2s ease;
+}
+
+.sync-dialog-progress-text {
+  font-size: 11.5px;
+  color: var(--color-fg-muted, #9da5b4);
+}
+
+.sync-dialog-error {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--vscode-errorForeground, #f48771);
+  background-color: rgba(244, 135, 113, 0.08);
+  border: 1px solid rgba(244, 135, 113, 0.35);
+  border-radius: 4px;
+  padding: 7px 10px;
+}
+
+.sync-dialog-danger {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--vscode-errorForeground, #f48771);
+  border-left: 3px solid var(--vscode-errorForeground, #f48771);
+  padding: 4px 0 4px 9px;
+}
+
+.sync-dialog-muted {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--color-fg-muted, #9da5b4);
+  text-align: center;
+}
+
+.sync-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.sync-dialog-btn {
+  padding: 5px 14px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border, #4c566a);
+  background-color: transparent;
+  color: var(--color-fg, #d8dee9);
+  cursor: pointer;
+}
+
+.sync-dialog-btn:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.sync-dialog-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sync-dialog-btn.primary {
+  background-color: var(--vscode-button-background, #2b3648);
+  border-color: var(--vscode-button-background, #2b3648);
+  color: var(--vscode-button-foreground, #ffffff);
+}
+
+.sync-dialog-btn.primary.danger {
+  background-color: var(--vscode-errorForeground, #c72e2e);
+  border-color: var(--vscode-errorForeground, #c72e2e);
+  color: #ffffff;
+}
+
+.push-dialog-sync-status {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  font-size: 11.5px;
+  color: var(--color-fg-muted, #9da5b4);
+}
+
+.push-dialog-sync-ahead {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
+}
+
+.push-dialog-sync-behind {
+  color: var(--vscode-gitDecoration-modifiedResourceForeground, #e2c08d);
+}
+
+.push-dialog-sync-upstream {
+  font-family: var(--font-mono);
+}
+
+.remote-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.remote-manager-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--color-border, #3b4252);
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.remote-manager-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.remote-manager-name {
+  font-size: 13px;
+  color: var(--color-fg-bright, #ffffff);
+}
+
+.remote-manager-url {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-fg-muted, #9da5b4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-manager-row-actions,
+.remote-manager-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.remote-manager-action-btn {
+  padding: 3px 9px;
+  font-size: 11.5px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border, #4c566a);
+  background-color: transparent;
+  color: var(--color-fg, #d8dee9);
+  cursor: pointer;
+}
+
+.remote-manager-action-btn:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.remote-manager-action-btn.danger {
+  color: var(--vscode-errorForeground, #f48771);
+  border-color: rgba(244, 135, 113, 0.45);
+}
+
+.remote-manager-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.remote-manager-inline-form,
+.remote-manager-remove-confirm,
+.remote-manager-add {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 6px;
+  background-color: rgba(0, 0, 0, 0.14);
+}
+
+.remote-manager-remove-confirm p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-fg-muted, #9da5b4);
+}
+
+.remote-manager-add-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.graph-toast-notification .toast-action-btn {
+  pointer-events: auto;
+  margin-left: 4px;
+  padding: 2px 9px;
+  font-size: 11.5px;
+  border-radius: 3px;
+  border: 1px solid var(--vscode-button-background, #528bff);
+  background-color: transparent;
+  color: var(--vscode-textLink-foreground, #528bff);
+  cursor: pointer;
+}
+
+.graph-toast-notification .toast-action-btn:hover {
+  background-color: rgba(82, 139, 255, 0.12);
+}
+
+@media (max-width: 600px) {
+  .sync-dialog {
+    padding: 12px 14px;
+    max-width: 100%;
+  }
+
+  .sync-dialog-field-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .sync-dialog-field-label {
+    width: auto;
+  }
+
+  .sync-dialog-actions {
+    flex-wrap: wrap;
+  }
+
+  .remote-manager-dialog {
+    max-height: calc(100vh - 24px);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Graph Minimap (M18.1)
+   --------------------------------------------------------------------------- */
+
+.commit-list-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
+.commit-list-layout > .commit-table-container {
+  flex: 1;
+  min-width: 0;
+}
+
+.graph-minimap {
+  position: relative;
+  flex: 0 0 48px;
+  width: 48px;
+  min-height: 0;
+  align-self: stretch;
+  background-color: rgba(255, 255, 255, 0.02);
+  border-left: 1px solid var(--color-border, #3b4252);
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.graph-minimap-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.graph-minimap:hover {
+  background-color: rgba(255, 255, 255, 0.045);
+}
+
+.graph-minimap:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder, #4daafc);
+  outline-offset: -2px;
+}
+
+@media (max-width: 700px) {
+  .graph-minimap {
+    flex-basis: 34px;
+    width: 34px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Branch Drag & Drop (M18.2)
+   --------------------------------------------------------------------------- */
+
+[data-draggable='true'] {
+  cursor: grab;
+}
+
+[data-draggable='true']:active {
+  cursor: grabbing;
+}
+
+.commit-row.branch-drop-target {
+  background-color: rgba(77, 170, 252, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(77, 170, 252, 0.75);
+}
+
+.commit-row.branch-drop-target .commit-cell {
+  background-color: transparent;
+}
+
+.branch-drag-ghost {
+  position: fixed;
+  z-index: 1200;
+  pointer-events: none;
+  padding: 3px 9px;
+  border-radius: 10px;
+  border: 1px solid var(--vscode-focusBorder, #4daafc);
+  background-color: var(--color-bg-card, #232734);
+  color: var(--color-fg, #d8dee9);
+  font-size: var(--font-size-sm, 11px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-drop-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.55);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1100;
+  padding: 16px;
+}
+
+.branch-drop-dialog {
+  background-color: var(--color-bg-card, #232734);
+  border: 1px solid var(--color-border, #3b4252);
+  border-radius: 8px;
+  padding: 18px 24px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--color-fg, #d8dee9);
+}
+
+.branch-drop-dialog-title {
+  font-size: 13.5px;
+  text-align: center;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.branch-drop-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.branch-drop-dialog-radio-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+
+.branch-drop-dialog-radio-label:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.branch-drop-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.branch-drop-dialog-btn {
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border, #3b4252);
+  background-color: transparent;
+  color: var(--color-fg, #d8dee9);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.branch-drop-dialog-btn.primary {
+  background-color: var(--vscode-button-background, #2b3648);
+  border-color: var(--color-border, #4c566a);
+  color: #ffffff;
+}
+
+/* ---------------------------------------------------------------------------
+   Settings Dialog (M18.3)
+   --------------------------------------------------------------------------- */
+
+.settings-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.55);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1100;
+  padding: 16px;
+}
+
+.settings-dialog {
+  background-color: var(--color-bg-card, #232734);
+  border: 1px solid var(--color-border, #3b4252);
+  border-radius: 8px;
+  padding: 18px 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  width: 100%;
+  max-width: 760px;
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--color-fg, #d8dee9);
+}
+
+.settings-dialog-title {
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  margin: 0;
+}
+
+.settings-dialog-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  gap: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding-top: 12px;
+}
+
+.settings-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 0 140px;
+}
+
+.settings-tab {
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--color-fg-muted, #a0a0a0);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.settings-tab:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--color-fg, #d8dee9);
+}
+
+.settings-tab.active {
+  background-color: rgba(77, 170, 252, 0.16);
+  color: var(--color-fg, #d8dee9);
+  font-weight: 600;
+}
+
+.settings-tab:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder, #4daafc);
+  outline-offset: -2px;
+}
+
+.settings-panel {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 4px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.settings-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-row-label {
+  font-size: 12.5px;
+  color: var(--color-fg, #d8dee9);
+}
+
+.settings-row-description {
+  font-size: 11px;
+  color: var(--color-fg-muted, #a0a0a0);
+  line-height: 1.4;
+}
+
+.settings-row-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  max-width: 300px;
+}
+
+.settings-reset-btn {
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--vscode-textLink-foreground, #4daafc);
+  cursor: pointer;
+}
+
+.settings-reset-btn:hover:not(:disabled) {
+  background-color: rgba(77, 170, 252, 0.12);
+}
+
+.settings-reset-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.settings-radio-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 3px 0;
+}
+
+.settings-text-input {
+  min-width: 220px;
+}
+
+.settings-select {
+  min-width: 140px;
+}
+
+.settings-secondary-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border, #3b4252);
+  background-color: transparent;
+  color: var(--color-fg, #d8dee9);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.settings-secondary-btn:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.settings-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-dialog-btn {
+  padding: 6px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border, #3b4252);
+  background-color: transparent;
+  color: var(--color-fg, #d8dee9);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.settings-dialog-btn.primary {
+  background-color: var(--vscode-button-background, #2b3648);
+  border-color: var(--color-border, #4c566a);
+  color: #ffffff;
+}
+
+@media (max-width: 640px) {
+  .settings-dialog-body {
+    flex-direction: column;
+  }
+
+  .settings-tabs {
+    flex: 0 0 auto;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .settings-row {
+    flex-wrap: wrap;
+  }
+
+  .settings-row-control {
+    max-width: 100%;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Accessibility (M18.4)
+   --------------------------------------------------------------------------- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+button:focus-visible,
+[role='button']:focus-visible,
+[role='tab']:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder, #4daafc);
+  outline-offset: 1px;
+}
+
+@media (forced-colors: active) {
+  button:focus-visible,
+  [role='button']:focus-visible,
+  [role='tab']:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid Highlight;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Phase 11 — Worktrees & Submodules
+   --------------------------------------------------------------------------- */
+
+.worktree-manager-dialog,
+.submodule-status-dialog {
+  max-width: 760px;
+}
+
+.worktree-manager-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.worktree-badge,
+.submodule-state-badge,
+.file-submodule-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 1.5;
+  background: var(--vscode-badge-background, rgba(255, 255, 255, 0.12));
+  color: var(--vscode-badge-foreground, inherit);
+  border: 1px solid transparent;
+}
+
+.worktree-badge-current {
+  border-color: var(--vscode-focusBorder, #4daafc);
+}
+
+.file-submodule-badge {
+  margin-left: 6px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  cursor: help;
+}
+
+.submodule-state-clean {
+  background: rgba(46, 160, 67, 0.25);
+}
+
+.submodule-state-dirty {
+  background: rgba(210, 153, 34, 0.28);
+}
+
+.submodule-state-uninitialized,
+.submodule-state-unknown {
+  background: rgba(248, 81, 73, 0.22);
+}
+
+.ref-badge-worktree {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 3px;
+  opacity: 0.85;
+}
+
+.toolbar-count-badge {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 7px;
+  font-size: 9px;
+  line-height: 13px;
+  text-align: center;
+  background: var(--vscode-badge-background, #616161);
+  color: var(--vscode-badge-foreground, #fff);
+}
+
+.toolbar-actions .btn-toolbar-action {
+  position: relative;
+}
+
+.sync-dialog-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+  font-size: 12px;
 }
